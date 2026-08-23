@@ -1,0 +1,18 @@
+# Generated retrieval artifacts -- rebuildable with `python build_index.py`
+index/
+
+# Source PDFs exceed GitHub's file limits (the Act alone is 101.8 MB, over the
+# hard 100 MB cap; the Rules are 68.7 MB). They are only needed to regenerate
+# Data/rag_knowledge_base.json, which IS committed and is what the pipeline
+# reads -- so a clone can build the index without them. Download them from
+# incometaxindia.gov.in into Data/tax_pdfs/ to re-run Data/textChunker.py,
+# or track them with Git LFS if they should live in the repo.
+Data/tax_pdfs/
+
+# Machine-specific TLS bundle exported from the Windows cert store.
+# Regenerate with the PowerShell snippet in README.md if HTTPS fails.
+win-ca-bundle.pem
+
+__pycache__/
+*.pyc
+.pytest_cache/

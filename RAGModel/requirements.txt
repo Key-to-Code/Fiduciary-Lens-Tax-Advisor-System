@@ -1,0 +1,20 @@
+# Core retrieval
+sentence-transformers>=3.4
+faiss-cpu>=1.10
+scikit-learn>=1.5
+scipy>=1.11
+numpy>=1.26
+torch>=2.4
+
+# Generation (all optional -- the pipeline degrades to extractive without them)
+transformers>=4.56      # provider "local" (uses the `dtype` kwarg)
+requests>=2.31          # provider "ollama"
+openai>=1.40            # provider "openai"
+httpx>=0.27
+
+# Rebuilding the knowledge base from the source PDFs (Data/textChunker.py)
+PyMuPDF>=1.24
+langchain-text-splitters>=0.3
+
+# Tests
+pytest>=8.0
