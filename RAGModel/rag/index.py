@@ -6,6 +6,7 @@ from `Data/rag_knowledge_base.json`. Nothing here belongs in git.
 
 from __future__ import annotations
 
+import functools
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -28,6 +29,17 @@ class SearchIndex:
     dense: faiss.Index
     lexical: BM25Index
     embed_model: str
+
+    @functools.cached_property
+    def has_rate_tables(self) -> bool:
+        """Whether the corpus carries slab/rate tables.
+
+        The Income-tax Act defers rates to "the Finance Act of the relevant
+        year", so rate questions are answerable only once a Finance Act is
+        indexed. The refusal guard keys off this rather than a hardcoded flag,
+        so dropping the Finance Act into the KB retires the guard by itself.
+        """
+        return any(chunk.doc_title.startswith("Finance Act") for chunk in self.chunks)
 
 
 def build(kb_path: Path | None = None, index_dir: Path | None = None,

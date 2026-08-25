@@ -115,8 +115,16 @@ def is_personal_advice(question: str) -> bool:
     return bool(_PERSONAL_ADVICE_RE.search(question))
 
 
-def uncovered_topic(question: str) -> str | None:
-    """A refusal for questions the knowledge base structurally cannot answer."""
+def uncovered_topic(question: str, rates_available: bool = False) -> str | None:
+    """A refusal for questions the knowledge base structurally cannot answer.
+
+    `rates_available` is set once a Finance Act is in the corpus, which retires
+    the rates guard automatically -- see `SearchIndex.has_rate_tables`. Personal
+    liability questions still get the advice steer from `is_personal_advice`;
+    what changes is that the bot can now explain the slabs behind the answer.
+    """
+    if rates_available:
+        return None
     wants_a_figure = (_ASKS_FOR_AMOUNT_RE.search(question)
                       and _PERSONAL_OR_FIGURE_RE.search(question))
     if _SLAB_RE.search(question) or wants_a_figure:

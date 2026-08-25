@@ -55,7 +55,8 @@ class TaxQA:
 
         # A known coverage gap is caught before retrieval: these questions do
         # retrieve something plausible-looking, which is exactly the trap.
-        uncovered = prompt.uncovered_topic(question)
+        uncovered = prompt.uncovered_topic(
+            question, rates_available=self.index.has_rate_tables)
         if uncovered:
             text = uncovered + "\n\n" + prompt.DISCLAIMER
             self.last = Answer(question, text, hits=[], grounded=False,

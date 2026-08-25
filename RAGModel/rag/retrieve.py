@@ -28,6 +28,18 @@ def _normalise(scores: np.ndarray) -> np.ndarray:
     return (scores - low) / (high - low)
 
 
+def _statute_weight(chunk: Chunk) -> float:
+    """Demote rate tables belonging to a superseded Act.
+
+    Only Finance Act passages carry `applies_to`, and only those that set rates
+    under an Act other than the principal one are penalised. A passage that
+    straddles both sub-parts names the principal year too, so it is not demoted.
+    """
+    if chunk.applies_to and config.PRINCIPAL_ACT_YEAR not in chunk.applies_to:
+        return config.SUPERSEDED_PENALTY
+    return 1.0
+
+
 def search(index: SearchIndex, question: str, top_k: int | None = None,
            candidate_k: int | None = None) -> list[Hit]:
     top_k = top_k or config.TOP_K
@@ -49,8 +61,9 @@ def search(index: SearchIndex, question: str, top_k: int | None = None,
 
     weight = config.DENSE_WEIGHT
     fused = {
-        doc_id: weight * dense_norm.get(doc_id, 0.0)
-        + (1 - weight) * lexical_norm.get(doc_id, 0.0)
+        doc_id: (weight * dense_norm.get(doc_id, 0.0)
+                 + (1 - weight) * lexical_norm.get(doc_id, 0.0))
+        * _statute_weight(index.chunks[doc_id])
         for doc_id in set(dense_norm) | set(lexical_norm)
     }
 

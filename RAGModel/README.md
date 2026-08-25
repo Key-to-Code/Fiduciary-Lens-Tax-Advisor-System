@@ -85,19 +85,19 @@ Questions phrased as personal advice ("should I…", "can I claim…") add an
 instruction to explain the general rule, decline to prescribe, and direct the
 user to a Chartered Accountant.
 
-**Known coverage gap, refused explicitly.** Tax *rates and slabs* are not in this
-corpus: section 4 charges income-tax "at the rate or rates specified in the
-Finance Act", and the slab table lives in the Finance Act, which is not one of
-the ingested PDFs. Left to retrieval these questions still return
-plausible-looking provisions at a healthy cosine, and a model then fills the gap
-from memory — in testing, one such question produced a confident *"you should not
-pay any tax"*. So slab and "how much tax do I owe" questions are intercepted
-before retrieval and refused with an explanation of what is missing and why.
-Impersonal rate questions ("how much tax is deducted at source on rent") still
-answer normally, because TDS rates genuinely are in the Act.
+**Known coverage gap, refused explicitly.** Tax *rates and slabs* are not in the
+default corpus: section 4 charges income-tax "at the rate or rates specified in
+the Finance Act", and the slab table lives in the Finance Act. Left to retrieval
+these questions still return plausible-looking provisions at a healthy cosine,
+and a model then fills the gap from memory — in testing, one such question
+produced a confident *"you should not pay any tax"*. So slab and "how much tax do
+I owe" questions are intercepted before retrieval and refused with an explanation
+of what is missing and why. Impersonal rate questions ("how much tax is deducted
+at source on rent") still answer normally, because TDS rates are in the Act.
 
-Adding the Finance Act to `Data/tax_pdfs/` and re-running the ingest closes this
-gap; the guard in `rag/prompt.py` should then be removed.
+The guard is **self-retiring**: it keys off `SearchIndex.has_rate_tables`, so
+adding the Finance Act to the corpus (see below) switches it off with no code
+edit.
 
 ---
 
@@ -140,7 +140,8 @@ python -m pytest tests/ -q                  # unit tests
 
 Tuning knobs are environment variables read in [`rag/config.py`](rag/config.py):
 `TOP_K`, `MIN_SCORE`, `DENSE_WEIGHT`, `EMBED_MODEL`, `LLM_PROVIDER`,
-`OLLAMA_MODEL`, `LOCAL_MODEL`, `OPENAI_MODEL`, `MAX_TOKENS`, `TEMPERATURE`.
+`OLLAMA_MODEL`, `LOCAL_MODEL`, `OPENAI_MODEL`, `MAX_TOKENS`, `TEMPERATURE`,
+`PRINCIPAL_ACT_YEAR`, `SUPERSEDED_PENALTY`.
 
 ---
 
@@ -171,7 +172,11 @@ numbering, which will not match pre-2026 guidance found elsewhere.
   name in prose instead. For anything beyond a demo, run Ollama with an 8B+
   model; retrieval, citations and guardrails are unchanged, only the wording
   improves. Retrieval is the part measured above; generation is not.
-- **No rates or slabs** — see the coverage gap above.
+- **No rates or slabs until you add the Finance Act** — see above. Once added,
+  retrieval surfaces the right table and cites the right Act, but the 1.5B model
+  paraphrases the numbers unreliably (in testing it rendered "₹110,000 plus 30%"
+  as "₹11,000 + 30%"). Treat generated figures as a pointer to the cited table,
+  not as the table. This is the strongest argument for a larger generator.
 - **Renumbered Act.** This is the 2025 Act, not the 1961 one. Section numbers
   will not match pre-2026 guidance found elsewhere.
 - **Chunk boundaries come from the existing ingest** (`Data/textChunker.py`,
@@ -180,6 +185,43 @@ numbering, which will not match pre-2026 guidance found elsewhere.
   passage may reproduce only part of a section — the prompt instructs the model
   to say so when that happens.
 - **No conversational memory beyond the last three turns**, and none across runs.
+
+## Adding the Finance Act (rates and slabs)
+
+The one document worth adding. Download **The Finance Act, 2026 (No. 4 of 2026)**
+— 121 pages, 1.5 MB, assented 30 March 2026 — from the e-Gazette:
+
+<https://egazette.gov.in/WriteReadData/2026/271439.pdf>
+
+Save it as `Data/tax_pdfs/Finance-Act-2026.pdf`, then re-ingest (below). The
+rates guard retires itself and slab questions start answering.
+
+**The First Schedule is not homogeneous**, and this is the trap the citation
+metadata exists to defuse. It carries rates for two different Acts at once:
+
+| | Sub-part A | Sub-part B |
+|---|---|---|
+| **Part I** — rates for the year | Income-tax Act, **1961** | Income-tax Act, **2025** |
+| **Part II** — TDS rates | — | Income-tax Act, **2025** |
+| **Part III** — slabs, salary TDS, advance tax | — | Income-tax Act, **2025** |
+| **Part IV** — net agricultural income | Income-tax Act, **1961** | Income-tax Act, **2025** |
+
+The two slab tables are near-identical in wording, so embeddings cannot tell them
+apart and the superseded 1961 table frequently outranked the right one. Three
+things handle it, all in code:
+
+- `rag/kb.py` resolves the governing Act per chunk from the `A.––`/`B.––` sub-part
+  banners and puts it in the citation: *"…Part III, Paragraph A [rates under the
+  Income-tax Act, 2025]"*. A chunk that straddles the boundary is labelled as
+  spanning both rather than being attributed to one.
+- `rag/retrieve.py` demotes passages governed by an Act other than
+  `PRINCIPAL_ACT_YEAR` (default 2025) by `SUPERSEDED_PENALTY`. They are demoted,
+  not dropped, so an explicit question about the 1961 Act still retrieves them.
+- `rag/kb.py` adds retrieval aliases for the First Schedule's Parts. The statute
+  says "rates of income-tax"; users say "slab" and "bracket", and the tables are
+  mostly numerals with little semantic signal. The aliases restate each Part's own
+  heading and are folded into the embedded text only — never into what the model
+  reads, and never into the law.
 
 ## Updating the knowledge base
 
@@ -190,6 +232,11 @@ Tax law changes yearly, and the entire update path is a re-ingest:
 cd Data && python textChunker.py     # → Data/rag_knowledge_base.json
 cd .. && python build_index.py       # → index/
 ```
+
+Both steps are required: the chunker rewrites the KB JSON, and the index is built
+from that JSON. `rag/index.py` refuses to load an index whose chunk count no
+longer matches the KB, so a forgotten rebuild fails loudly instead of silently
+returning stale neighbours.
 
 `index/` is a derived artifact and is gitignored; nothing important should exist
 only as a generated file. Changing `EMBED_MODEL` requires a full re-index, and

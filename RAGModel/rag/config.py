@@ -15,6 +15,14 @@ EMBED_MODEL = os.getenv("EMBED_MODEL", "BAAI/bge-small-en-v1.5")
 QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
 EMBED_BATCH = int(os.getenv("EMBED_BATCH", "64"))
 
+# The Finance Act sets rates for both the superseded Income-tax Act, 1961 and the
+# Income-tax Act, 2025 that this corpus is built on, in near-identical wording -
+# embeddings cannot tell the two tables apart, so the 1961 one often outranks the
+# right one. Demote passages governed by an Act other than the principal statute
+# rather than dropping them, so an explicit question about the old Act still works.
+PRINCIPAL_ACT_YEAR = os.getenv("PRINCIPAL_ACT_YEAR", "2025")
+SUPERSEDED_PENALTY = float(os.getenv("SUPERSEDED_PENALTY", "0.55"))
+
 TOP_K = int(os.getenv("TOP_K", "6"))          # passages handed to the LLM
 CANDIDATE_K = int(os.getenv("CANDIDATE_K", "30"))  # per-retriever candidate pool
 DENSE_WEIGHT = float(os.getenv("DENSE_WEIGHT", "0.65"))  # vs. lexical, in fusion
