@@ -12,7 +12,7 @@ Data/tax_pdfs/
 # Machine-specific TLS bundle exported from the Windows cert store.
 # Regenerate with the PowerShell snippet in README.md if HTTPS fails.
 win-ca-bundle.pem
-
+CLAUDE.md
 __pycache__/
 *.pyc
 .pytest_cache/
