@@ -34,10 +34,10 @@ MIN_SCORE = float(os.getenv("MIN_SCORE", "0.60"))
 # --- generation ---------------------------------------------------------
 # "auto" probes ollama, then a cached local model, then openai, then falls back
 # to extractive (no LLM at all).
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "auto")
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openai")
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.1:8b")
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "meta-llama/llama-3.3-70b-instruct")
 # Runs in-process via transformers. ~3.1 GB in fp16, so it fits a 6 GB GPU.
 LOCAL_MODEL = os.getenv("LOCAL_MODEL", "Qwen/Qwen2.5-1.5B-Instruct")
 MAX_TOKENS = int(os.getenv("MAX_TOKENS", "800"))
