@@ -10,9 +10,9 @@ KB_JSON = Path(os.getenv("KB_JSON", ROOT / "Data" / "rag_knowledge_base.json"))
 INDEX_DIR = Path(os.getenv("INDEX_DIR", ROOT / "index"))
 
 # --- retrieval ----------------------------------------------------------
-EMBED_MODEL = os.getenv("EMBED_MODEL", "BAAI/bge-small-en-v1.5")
-# bge models are trained with an instruction prefix on the query side only.
-QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
+EMBED_MODEL = os.getenv("EMBED_MODEL", "ai4bharat/indic-bert")
+# IndicBERT does not require a query prefix for retrieval
+QUERY_PREFIX = ""
 EMBED_BATCH = int(os.getenv("EMBED_BATCH", "64"))
 
 # The Finance Act sets rates for both the superseded Income-tax Act, 1961 and the
