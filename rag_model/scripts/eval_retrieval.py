@@ -1,28 +1,12 @@
-"""Retrieval evaluation against a gold set.
-
-Retrieval quality is the metric that matters most here: the generator can only
-be as honest as the passages it is handed, so if the right provision never
-surfaces, no amount of prompting saves the answer.
-
-    python eval_retrieval.py            # summary
-    python eval_retrieval.py --verbose  # per-question detail
-
-Two things are measured:
-  recall@k  - did an acceptable provision appear in the top-k passages?
-  refusal   - are off-topic questions correctly scored below the grounding bar?
-
-Expected provisions were read off the headings in the knowledge base itself, not
-recalled from memory, because this Act renumbered the familiar sections (the old
-80C deduction now lives in section 123 and Schedule XV).
-"""
-
 from __future__ import annotations
 
 import argparse
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from rag import index, retrieve
+from rag_model.src.retrieval import index, retrieve
 
-# question -> provisions that would be a correct citation, as (unit, number)
 GOLD: list[tuple[str, list[tuple[str, str]]]] = [
     ("How is the residential status of an individual determined in India?",
      [("Section", "6")]),
@@ -66,7 +50,6 @@ GOLD: list[tuple[str, list[tuple[str, str]]]] = [
      [("Section", "516")]),
 ]
 
-# Must fall below the grounding bar so the bot refuses instead of improvising.
 OFF_TOPIC = [
     "Who won the 2018 FIFA World Cup?",
     "How do I bake a sourdough loaf?",
@@ -77,6 +60,7 @@ OFF_TOPIC = [
 
 
 def evaluate(engine_index, k: int, verbose: bool) -> tuple[float, float]:
+    """Evaluates the retrieval quality of the engine index."""
     hit_at_k = 0
     reciprocal_ranks = []
 
@@ -109,6 +93,7 @@ def evaluate(engine_index, k: int, verbose: bool) -> tuple[float, float]:
 
 
 def evaluate_refusals(engine_index, k: int, verbose: bool) -> float:
+    """Evaluates the refusal rate of the engine index."""
     refused = 0
     for question in OFF_TOPIC:
         hits = retrieve.search(engine_index, question, top_k=k)
@@ -123,8 +108,8 @@ def evaluate_refusals(engine_index, k: int, verbose: bool) -> float:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__,
-                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    """Runs the main program."""
+    parser = argparse.ArgumentParser(description="Evaluate retrieval quality and refusal rate.")
     parser.add_argument("-k", type=int, default=6, help="passages retrieved (default 6)")
     parser.add_argument("--verbose", action="store_true", help="show every question")
     args = parser.parse_args()

@@ -6,9 +6,10 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from . import config, embedder
-from .index import SearchIndex
-from .kb import Chunk
+from shared import config
+from rag_model.src.retrieval import embedder
+from rag_model.src.retrieval.index import SearchIndex
+from rag_model.src.knowledge.kb import Chunk
 
 
 @dataclass

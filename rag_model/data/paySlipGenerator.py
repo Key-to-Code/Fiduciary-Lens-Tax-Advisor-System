@@ -5,7 +5,6 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 
-# 1. Define synthetic profiles
 dummy_profiles = [
     {
         "name": "Arjun Sharma",
@@ -30,6 +29,7 @@ dummy_profiles = [
 ]
 
 def generate_synthetic_pdf(profile, output_path):
+    """Generates a synthetic PDF for the given profile and saves it to the specified output path."""
     doc = SimpleDocTemplate(output_path, pagesize=letter)
     story = []
     
@@ -41,11 +41,9 @@ def generate_synthetic_pdf(profile, output_path):
         spaceAfter=20
     )
     
-    # Header Section
     story.append(Paragraph("SYNTHETIC FORM 16 - CERTIFICATE OF TAX DEDUCTED AT SOURCE", title_style))
     story.append(Spacer(1, 12))
     
-    # Employee Details Table Data
     data = [
         [Paragraph("<b>Employee Name:</b>", styles['Normal']), Paragraph(profile['name'], styles['Normal']),
          Paragraph("<b>PAN:</b>", styles['Normal']), Paragraph(profile['pan'], styles['Normal'])],
@@ -64,7 +62,6 @@ def generate_synthetic_pdf(profile, output_path):
     story.append(t1)
     story.append(Spacer(1, 20))
     
-    # Financial Breakdown Table Data
     story.append(Paragraph("<b>Details of Salary Paid and Deductions under Section 80C</b>", styles['Heading2']))
     story.append(Spacer(1, 8))
     
@@ -84,10 +81,10 @@ def generate_synthetic_pdf(profile, output_path):
     ]))
     story.append(t2)
     
-    # Build the document
     doc.build(story)
 
 def create_dataset(output_dir="synthetic_forms"):
+    """Creates a dataset of synthetic PDFs for the given profiles and saves them to the specified output directory."""
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
         

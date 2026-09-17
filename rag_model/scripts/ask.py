@@ -1,19 +1,15 @@
-"""Ask the tax knowledge base a question.
-
-    python ask.py "What deductions are allowed for life insurance premium?"
-    python ask.py                      # interactive session
-    python ask.py --providers          # show which LLM backends are usable
-    python ask.py -q "..." --retrieval-only   # show retrieved provisions, no LLM
-"""
-
 from __future__ import annotations
 
 import argparse
 import sys
 
-from rag import llm
-from rag.answer import TaxQA
-from rag.prompt import DISCLAIMER
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+
+from shared import llm_client as llm
+from rag_model.src.generation.answer import TaxQA
+from rag_model.src.generation.prompt import DISCLAIMER
 
 BANNER = """Fiduciary-Lens Tax QA - Income-tax Act, 2025 + Income-tax Rules, 2026
 Educational information only, not professional tax advice.
@@ -21,6 +17,7 @@ Type a question, or 'exit' to quit."""
 
 
 def _print_sources(answer) -> None:
+    """Prints the sources of the given answer."""
     if not answer.sources:
         return
     print("\nSources")
@@ -31,6 +28,7 @@ def _print_sources(answer) -> None:
 
 
 def run_once(engine: TaxQA, question: str, history, show_sources: bool) -> None:
+    """Runs the TaxQA engine once with the given question and history."""
     print()
     for piece in engine.stream(question, history=history):
         sys.stdout.write(piece)
@@ -44,6 +42,7 @@ def run_once(engine: TaxQA, question: str, history, show_sources: bool) -> None:
 
 
 def retrieval_only(engine: TaxQA, question: str) -> None:
+    """Retrieves passages for the given question without generating an answer."""
     hits = engine.retrieve(question)
     print(f"\nTop {len(hits)} passages for: {question}\n")
     for position, hit in enumerate(hits, start=1):
@@ -56,16 +55,13 @@ def retrieval_only(engine: TaxQA, question: str) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__,
-                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    """Runs the main program."""
+    parser = argparse.ArgumentParser(description="", formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("question", nargs="*", help="question to ask")
     parser.add_argument("-q", "--query", help="question to ask (alternative to positional)")
-    parser.add_argument("--provider", default=None,
-                        help="auto (default), ollama, openai or extractive")
-    parser.add_argument("--providers", action="store_true",
-                        help="list LLM backends and whether they are reachable")
-    parser.add_argument("--retrieval-only", action="store_true",
-                        help="show retrieved provisions without generating an answer")
+    parser.add_argument("--provider", default=None, help="auto (default), ollama, openai or extractive")
+    parser.add_argument("--providers", action="store_true", help="list LLM backends and whether they are reachable")
+    parser.add_argument("--retrieval-only", action="store_true", help="show retrieved provisions without generating an answer")
     parser.add_argument("--no-sources", action="store_true", help="hide the sources panel")
     parser.add_argument("--top-k", type=int, default=None, help="passages to retrieve")
     args = parser.parse_args()

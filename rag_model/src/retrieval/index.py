@@ -14,9 +14,10 @@ from pathlib import Path
 import faiss
 import numpy as np
 
-from . import config, embedder
-from .kb import Chunk, index_text, load_chunks
-from .lexical import BM25Index
+from shared import config
+from rag_model.src.retrieval import embedder
+from rag_model.src.knowledge.kb import Chunk, index_text, load_chunks
+from rag_model.src.retrieval.lexical import BM25Index
 
 _MANIFEST = "manifest.json"
 _VECTORS = "dense.faiss"

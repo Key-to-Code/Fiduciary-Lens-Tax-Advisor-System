@@ -1,17 +1,8 @@
-"""Grounded prompt assembly and the fiduciary guardrails.
-
-Guardrails live in three places, deliberately:
-  1. Retrieval - no relevant passage means we refuse before a model is called.
-  2. Prompt    - the system message forbids ungrounded claims and demands cites.
-  3. Post-hoc  - the disclaimer is appended in code, not left to the model.
-Only (1) and (3) are enforceable; (2) is instruction, which is why it is not alone.
-"""
-
 from __future__ import annotations
 
 import re
 
-from .retrieve import Hit
+from rag_model.src.retrieval.retrieve import Hit
 
 DISCLAIMER = (
     "_Educational information about Indian tax law, not professional tax, "
@@ -42,8 +33,6 @@ use, and open with a direct one-sentence answer. Note explicitly when a provisio
 is only partly reproduced in the passage you were given.
 """
 
-# Prescriptive, personally-directed phrasing. The bot may still explain the law,
-# but the answer gets an explicit steer toward a professional.
 _PERSONAL_ADVICE_RE = re.compile(
     r"(?i)\b(should i|do i need to|how much (tax )?(do|should|will) i|"
     r"what.s my (tax|liability)|my (salary|income|tax) is|"
@@ -70,21 +59,11 @@ REFUSAL = (
 )
 
 
-# Questions the corpus provably cannot answer. Section 4 charges tax "at the rate
-# or rates specified in the Finance Act" - the slab table itself lives in the
-# Finance Act's First Schedule, which is not among the ingested documents. Left to
-# retrieval these queries return tangentially-related provisions with a good
-# cosine, and a model then fills the gap with a remembered slab table. Refusing on
-# the known gap is the honest outcome; drop the Finance Act into the KB to remove it.
 _SLAB_RE = re.compile(
     r"(?i)(\btax slabs?\b|\bslab rates?\b|\bincome tax slabs?\b|"
     r"\brates? of income.?tax\b|\bwhat.{0,12}\btax rates?\b|"
     r"\b(new|old) (tax )?regime\b)"
 )
-# "How much tax?" cannot be answered without the slab table either. But an
-# impersonal rate question ("how much tax is deducted at source on rent") IS
-# answerable, because TDS rates are in the Act - so the amount request only
-# counts as uncovered when it is about a person or a specific sum of money.
 _ASKS_FOR_AMOUNT_RE = re.compile(
     r"(?i)(\bhow much\b[^?]{0,30}\btax\b|"
     r"\b(calculate|compute|work out|figure out)\b[^?]{0,25}\btax\b|"
@@ -112,17 +91,12 @@ UNCOVERED_RATES = (
 
 
 def is_personal_advice(question: str) -> bool:
+    """Checks if a question contains personal advice."""
     return bool(_PERSONAL_ADVICE_RE.search(question))
 
 
 def uncovered_topic(question: str, rates_available: bool = False) -> str | None:
-    """A refusal for questions the knowledge base structurally cannot answer.
-
-    `rates_available` is set once a Finance Act is in the corpus, which retires
-    the rates guard automatically -- see `SearchIndex.has_rate_tables`. Personal
-    liability questions still get the advice steer from `is_personal_advice`;
-    what changes is that the bot can now explain the slabs behind the answer.
-    """
+    """Returns a refusal message for questions the knowledge base cannot answer."""
     if rates_available:
         return None
     wants_a_figure = (_ASKS_FOR_AMOUNT_RE.search(question)
@@ -133,6 +107,7 @@ def uncovered_topic(question: str, rates_available: bool = False) -> str | None:
 
 
 def format_context(hits: list[Hit], max_chars_per_hit: int = 1600) -> str:
+    """Formats the context for a given list of hits."""
     blocks = []
     for position, hit in enumerate(hits, start=1):
         body = hit.chunk.content[:max_chars_per_hit]
@@ -146,7 +121,7 @@ def format_context(hits: list[Hit], max_chars_per_hit: int = 1600) -> str:
 
 def build_messages(question: str, hits: list[Hit],
                    history: list[tuple[str, str]] | None = None) -> tuple[str, str]:
-    """Return (system_prompt, user_prompt)."""
+    """Builds system and user prompts for a given question and hits."""
     system = SYSTEM_PROMPT
     if is_personal_advice(question):
         system += _PERSONAL_ADVICE_STEER
@@ -158,8 +133,6 @@ def build_messages(question: str, hits: list[Hit],
 
     parts.append("RETRIEVED PROVISIONS\n" + format_context(hits))
     parts.append(f"QUESTION: {question}")
-    # Small local models weight the closing instruction far more heavily than the
-    # system message, so the citation format is restated here with a worked example.
     closing = ["Answer using only the provisions above."]
     if hits:
         labels = ", ".join(f"[{n}]={hit.chunk.short_citation}"

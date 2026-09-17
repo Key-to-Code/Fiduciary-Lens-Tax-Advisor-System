@@ -13,9 +13,10 @@ import json
 
 import pytest
 
-from rag import prompt, retrieve
-from rag.kb import Chunk, _sort_key, load_chunks
-from rag.lexical import BM25Index
+from rag_model.src.generation import prompt
+from rag_model.src.retrieval import retrieve
+from rag_model.src.knowledge.kb import Chunk, _sort_key, load_chunks
+from rag_model.src.retrieval.lexical import BM25Index
 
 
 @pytest.fixture(scope="module")

@@ -9,7 +9,7 @@ load_dotenv()
 ROOT = Path(__file__).resolve().parent.parent
 
 # --- data ---------------------------------------------------------------
-KB_JSON = Path(os.getenv("KB_JSON", ROOT / "Data" / "rag_knowledge_base.json"))
+KB_JSON = Path(os.getenv("KB_JSON", ROOT / "rag_model" / "data" / "rag_knowledge_base.json"))
 INDEX_DIR = Path(os.getenv("INDEX_DIR", ROOT / "index"))
 
 # --- retrieval ----------------------------------------------------------

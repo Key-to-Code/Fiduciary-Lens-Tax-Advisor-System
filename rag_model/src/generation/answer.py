@@ -1,14 +1,13 @@
-"""The end-to-end pipeline: question in, grounded and cited answer out."""
-
 from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
 from typing import Iterator
 
-from . import index as index_module, prompt, retrieve
-from .llm import ExtractiveProvider, Provider, get_provider
-from .retrieve import Hit
+from rag_model.src.retrieval import index as index_module, retrieve
+from rag_model.src.generation import prompt
+from shared.llm_client import ExtractiveProvider, Provider, get_provider
+from rag_model.src.retrieval.retrieve import Hit
 
 
 @dataclass
@@ -19,6 +18,15 @@ class Answer:
     grounded: bool = True
     provider: str = ""
     latency_ms: int = 0
+
+    def __init__(self, question: str, text: str, hits: list[Hit] = None, grounded: bool = True, provider: str = "", latency_ms: int = 0):
+        """Represents an answer to a question with its sources and metadata."""
+        self.question = question
+        self.text = text
+        self.hits = hits if hits is not None else []
+        self.grounded = grounded
+        self.provider = provider
+        self.latency_ms = latency_ms
 
     @property
     def sources(self) -> list[dict]:
@@ -38,42 +46,32 @@ class Answer:
 
 
 class TaxQA:
-    """Holds the loaded index and provider so repeated questions stay cheap."""
-
     def __init__(self, provider: Provider | str | None = None, index_dir=None):
+        """Initializes the TaxQA class with a provider and index directory."""
         self.index = index_module.load(index_dir)
         self.provider = provider if isinstance(provider, Provider) else get_provider(provider)
         self.last: Answer | None = None
 
     def retrieve(self, question: str, top_k: int | None = None) -> list[Hit]:
+        """Retrieves relevant hits for a given question."""
         return retrieve.search(self.index, question, top_k=top_k)
 
-    def stream(self, question: str, history=None,
-               top_k: int | None = None) -> Iterator[str]:
-        """Yield the answer in pieces. Final state lands on `self.last`."""
+    def stream(self, question: str, history=None, top_k: int | None = None) -> Iterator[str]:
+        """Yields the answer to a question in pieces."""
         started = time.perf_counter()
 
-        # A known coverage gap is caught before retrieval: these questions do
-        # retrieve something plausible-looking, which is exactly the trap.
-        uncovered = prompt.uncovered_topic(
-            question, rates_available=self.index.has_rate_tables)
+        uncovered = prompt.uncovered_topic(question, rates_available=self.index.has_rate_tables)
         if uncovered:
             text = uncovered + "\n\n" + prompt.DISCLAIMER
-            self.last = Answer(question, text, hits=[], grounded=False,
-                               provider=self.provider.name,
-                               latency_ms=int((time.perf_counter() - started) * 1000))
+            self.last = Answer(question, text, hits=[], grounded=False, provider=self.provider.name, latency_ms=int((time.perf_counter() - started) * 1000))
             yield text
             return
 
         hits = self.retrieve(question, top_k=top_k)
 
         if not retrieve.is_grounded(hits):
-            # Cite-or-refuse: nothing retrieved clears the relevance bar, so we
-            # never reach the model. This is the guardrail that actually holds.
             text = prompt.REFUSAL + "\n\n" + prompt.DISCLAIMER
-            self.last = Answer(question, text, hits=[], grounded=False,
-                               provider=self.provider.name,
-                               latency_ms=int((time.perf_counter() - started) * 1000))
+            self.last = Answer(question, text, hits=[], grounded=False, provider=self.provider.name, latency_ms=int((time.perf_counter() - started) * 1000))
             yield text
             return
 
@@ -84,11 +82,7 @@ class TaxQA:
                 collected.append(piece)
                 yield piece
         except Exception as exc:
-            # A dead backend (quota, network, unloaded model) must not cost the
-            # user their answer: the retrieved law is still sound, so fall back
-            # to quoting it rather than surfacing a traceback.
-            note = (f"\n\n_[{self.provider.name} backend failed: "
-                    f"{type(exc).__name__}: {exc}]_\n\n")
+            note = (f"\n\n_[{self.provider.name} backend failed: {type(exc).__name__}: {exc}]_\n\n")
             collected.append(note)
             yield note
             if not any(piece.strip() for piece in collected[:-1]):
@@ -108,6 +102,7 @@ class TaxQA:
         )
 
     def ask(self, question: str, history=None, top_k: int | None = None) -> Answer:
+        """Asks a question and returns the answer."""
         for _ in self.stream(question, history, top_k):
             pass
         return self.last

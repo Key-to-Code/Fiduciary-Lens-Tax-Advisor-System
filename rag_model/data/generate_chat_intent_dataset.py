@@ -1,7 +1,7 @@
 import json
 
 def generate_chat_intent_dataset(output_json_path="chat_intent_testset.json"):
-    # High-yield user evaluation scenarios map
+    """Generates a chat intent dataset and exports it to a JSON file."""
     intents_data = [
         {
             "intent_id": "INTENT_001",
