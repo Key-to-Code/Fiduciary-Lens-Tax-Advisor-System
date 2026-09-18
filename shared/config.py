@@ -13,9 +13,15 @@ KB_JSON = Path(os.getenv("KB_JSON", ROOT / "rag_model" / "data" / "rag_knowledge
 INDEX_DIR = Path(os.getenv("INDEX_DIR", ROOT / "index"))
 
 # --- retrieval ----------------------------------------------------------
-EMBED_MODEL = os.getenv("EMBED_MODEL", "ai4bharat/indic-bert")
-# IndicBERT does not require a query prefix for retrieval
-QUERY_PREFIX = ""
+# A retrieval-trained embedder. ai4bharat/indic-bert was tried (2026-09): it is a
+# masked-language model with no retrieval training, so sentence-transformers
+# falls back to mean pooling, and on this KB it scored 35% recall@6 (1/20 from
+# the embeddings alone) against 100% here, and refused 0/5 off-topic questions.
+# For Indian-language queries use a multilingual *retrieval* model (e.g.
+# BAAI/bge-m3) and re-run eval_retrieval.py plus MIN_SCORE calibration.
+EMBED_MODEL = os.getenv("EMBED_MODEL", "BAAI/bge-small-en-v1.5")
+# bge models are trained with an instruction prefix on the query side only.
+QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
 EMBED_BATCH = int(os.getenv("EMBED_BATCH", "64"))
 
 # The Finance Act sets rates for both the superseded Income-tax Act, 1961 and the
@@ -30,8 +36,10 @@ TOP_K = int(os.getenv("TOP_K", "6"))          # passages handed to the LLM
 CANDIDATE_K = int(os.getenv("CANDIDATE_K", "30"))  # per-retriever candidate pool
 DENSE_WEIGHT = float(os.getenv("DENSE_WEIGHT", "0.65"))  # vs. lexical, in fusion
 # Below this cosine we treat retrieval as "nothing relevant found" and refuse.
-# Calibrated on this KB: on-topic tax questions land at 0.70-0.82, off-topic
-# controls (football, baking, programming) at 0.48-0.54.
+# Calibrated for bge-small on the full KB (3,496 chunks): on-topic tax questions
+# land at 0.73-0.84, off-topic controls (football, baking, programming) at
+# 0.49-0.56. Changing EMBED_MODEL invalidates this -- recalibrate with
+# rag_model/scripts/eval_retrieval.py.
 MIN_SCORE = float(os.getenv("MIN_SCORE", "0.60"))
 
 # --- generation ---------------------------------------------------------

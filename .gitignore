@@ -1,13 +1,17 @@
-# Generated retrieval artifacts -- rebuildable with `python build_index.py`
+# Generated retrieval artifacts -- rebuildable with
+# `python rag_model/scripts/build_index.py`
 index/
 
-# Source PDFs exceed GitHub's file limits (the Act alone is 101.8 MB, over the
-# hard 100 MB cap; the Rules are 68.7 MB). They are only needed to regenerate
-# Data/rag_knowledge_base.json, which IS committed and is what the pipeline
-# reads -- so a clone can build the index without them. Download them from
-# incometaxindia.gov.in into Data/tax_pdfs/ to re-run Data/textChunker.py,
-# or track them with Git LFS if they should live in the repo.
-Data/tax_pdfs/
+# Source PDFs exceed GitHub's file limits (the Act is 101.8 MB, over the hard
+# 100 MB cap; the Rules are 68.7 MB). They are only needed to regenerate
+# rag_model/data/rag_knowledge_base.json, which IS committed and is what the
+# pipeline reads -- so a clone can build the index without them.
+# Do NOT re-run textChunker.py unless all three PDFs are present: it rewrites the
+# KB from whatever is in tax_pdfs/, so a clone holding only the Finance Act
+# silently drops the Act and the Rules (this happened once, in 784f075).
+# The Finance Act is small enough to track and stays committed.
+rag_model/data/tax_pdfs/*.pdf
+!rag_model/data/tax_pdfs/Finance-Act-2026.pdf
 
 # Machine-specific TLS bundle exported from the Windows cert store.
 # Regenerate with the PowerShell snippet in README.md if HTTPS fails.

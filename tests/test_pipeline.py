@@ -65,7 +65,10 @@ def test_schedules_are_not_labelled_as_sections(chunks):
 
 
 def test_citation_is_human_readable(chunks):
-    section_6 = next(c for c in chunks if c.unit == "Section" and c.number == "6")
+    # The Finance Act has a Section 6 too, and the chunker's file order decides
+    # which comes first -- so select by document, not by position.
+    section_6 = next(c for c in chunks if c.doc_title.startswith("Income-tax Act")
+                     and c.unit == "Section" and c.number == "6")
     assert section_6.citation.startswith("Income-tax Act, 2025, Section 6")
     assert section_6.short_citation == "Act s.6"
 
