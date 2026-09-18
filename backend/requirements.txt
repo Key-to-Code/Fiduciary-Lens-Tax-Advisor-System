@@ -1,0 +1,17 @@
+# FastAPI backend dependencies — Stage 1
+#
+# These extend the root requirements.txt.
+# All ML/NLP/RAG dependencies (torch, faiss, sentence-transformers, etc.)
+# remain in the root requirements.txt and are not duplicated here.
+#
+# Install everything needed to run the full stack:
+#   pip install -r requirements.txt          # from project root
+#   pip install -r backend/requirements.txt  # web layer
+#
+# Or from the project root in one shot:
+#   pip install -r requirements.txt -r backend/requirements.txt
+
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic-settings>=2.3
+python-dotenv>=1.0
