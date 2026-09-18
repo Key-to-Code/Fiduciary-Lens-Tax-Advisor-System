@@ -1,30 +1,94 @@
 """
-RAG/NLP service integration stub.
+RAG/NLP service integration layer.
 
-Stage 1: This module documents the call contracts for the existing pipeline
-without importing the heavy ML dependencies at server start-up. Imports are
-deferred inside each function so that FastAPI starts instantly even when the
-FAISS index has not been built yet.
-
-Stage 2 will:
-  - Wire these functions into API route handlers.
-  - Add request/response serialisation.
-  - Optionally add a lazily-initialised TaxQA singleton for performance.
-
-THE EXISTING PIPELINE IS NEVER MODIFIED HERE.
-All logic stays in:
+Stage 3: Integrates the FastAPI backend with the EXISTING RAG and NLP pipelines:
   - rag_model/src/generation/answer.py  →  TaxQA
+  - nlp_pipeline/src/summarize.py       →  summarize_document
   - nlp_pipeline/src/insight.py         →  generate_insights
+  - nlp_pipeline/src/extract.py         →  extract_financial_entities
+
+The existing pipelines are NEVER duplicated, rewritten, or bypassed.
+Imports are deferred to keep server startup fast and resilient.
 """
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import Any
 
 
+class ProviderError(Exception):
+    """Raised when an underlying LLM or retrieval backend fails."""
+
+    def __init__(self, title: str, detail: str | None = None):
+        super().__init__(title, detail)
+        self.title = title
+        self.detail = detail
+
+
 # ---------------------------------------------------------------------------
-# RAG Q&A  (wraps TaxQA from rag_model)
+# Legal Document Summarization (wraps summarize_document from nlp_pipeline)
+# ---------------------------------------------------------------------------
+
+def summarize_legal_document(
+    text: str,
+    provider: str | None = None,
+) -> dict[str, Any]:
+    """
+    Summarize legal document text using the existing NLP pipeline.
+
+    Parameters
+    ----------
+    text:
+        The validated text extracted from the uploaded legal document.
+    provider:
+        Optional LLM provider name ("openai", "ollama", "local", "extractive", "auto").
+
+    Returns
+    -------
+    dict with keys:
+        summary: str
+            The generated legal document summary.
+        processing_time: float
+            Execution time in seconds.
+
+    Raises
+    ------
+    ProviderError
+        If the configured LLM provider fails (e.g. connection error, missing key).
+    """
+    started = time.perf_counter()
+
+    # Deferred import of the existing summarization function
+    from nlp_pipeline.src.summarize import summarize_document  # noqa: PLC0415
+    from shared import config  # noqa: PLC0415
+
+    # If an explicit provider is passed, set it temporarily for the call
+    original_provider = config.LLM_PROVIDER
+    if provider:
+        config.LLM_PROVIDER = provider
+
+    try:
+        summary = summarize_document(text)
+    except Exception as exc:
+        raise ProviderError(
+            "LLM provider failure",
+            f"The language model provider failed to generate a summary: {type(exc).__name__}: {str(exc)}",
+        ) from exc
+    finally:
+        if provider:
+            config.LLM_PROVIDER = original_provider
+
+    processing_time = round(time.perf_counter() - started, 2)
+    return {
+        "summary": summary,
+        "processing_time": processing_time,
+    }
+
+
+# ---------------------------------------------------------------------------
+# RAG Q&A (wraps TaxQA from rag_model)
 # ---------------------------------------------------------------------------
 
 def ask_tax_question(question: str, provider: str | None = None) -> dict[str, Any]:
@@ -34,30 +98,25 @@ def ask_tax_question(question: str, provider: str | None = None) -> dict[str, An
     Parameters
     ----------
     question:
-        The natural-language question to answer.
+        The natural-language tax question.
     provider:
-        Optional LLM provider override ("openai", "ollama", "local",
-        "extractive", "auto"). Defaults to the value of LLM_PROVIDER in .env.
+        Optional provider override.
 
     Returns
     -------
-    dict with keys:
-        answer   (str)        Full answer text including disclaimer.
-        sources  (list[dict]) Cited provisions; empty when retrieval fails.
-        grounded (bool)       False when retrieval confidence is too low.
-        provider (str)        Which LLM backend was used.
-        latency_ms (int)      Wall-clock ms for the full call.
-
-    Raises
-    ------
-    FileNotFoundError
-        If the FAISS index has not been built yet (run build_index.py first).
+    dict with answer text, sources, grounded flag, provider, latency_ms.
     """
-    # Deferred import — keeps server startup fast; heavy models load on first call.
     from rag_model.src.generation.answer import TaxQA  # noqa: PLC0415
 
-    qa = TaxQA(provider=provider)
-    answer = qa.ask(question)
+    try:
+        qa = TaxQA(provider=provider)
+        answer = qa.ask(question)
+    except Exception as exc:
+        raise ProviderError(
+            "RAG pipeline failure",
+            f"Failed to query knowledge base: {type(exc).__name__}: {str(exc)}",
+        ) from exc
+
     return {
         "answer": answer.text,
         "sources": answer.sources,
@@ -68,39 +127,25 @@ def ask_tax_question(question: str, provider: str | None = None) -> dict[str, An
 
 
 # ---------------------------------------------------------------------------
-# Document insight pipeline  (wraps generate_insights from nlp_pipeline)
+# Document Insight Pipeline (wraps generate_insights from nlp_pipeline)
 # ---------------------------------------------------------------------------
 
 def analyse_document(file_path: str | Path) -> dict[str, Any]:
     """
-    Run the end-to-end NLP pipeline on a tax document (PDF or plain text).
+    Run the full end-to-end NLP pipeline on a tax document (PDF or plain text).
 
-    Pipeline steps (all defined in the existing nlp_pipeline/):
-      1. parse   — extract raw text via PyMuPDF
-      2. summarize — LLM-generated summary with action items / deadlines
-      3. extract — regex + LLM entity extraction (PAN, TAN, deductions …)
-      4. insights — each detected deduction is queried against the RAG engine
-
-    Parameters
-    ----------
-    file_path:
-        Absolute or relative path to the document (.pdf / .txt / .md / .csv).
-
-    Returns
-    -------
-    dict with keys:
-        summary     (str)   LLM-generated document summary.
-        entities    (dict)  Extracted PAN, TAN, GSTIN, amounts, complex entities.
-        tax_insights (dict) Per-deduction RAG answers; key "general" if none found.
-
-    Raises
-    ------
-    FileNotFoundError
-        If file_path does not exist.
-    ValueError
-        If the file format is not supported.
+    Pipeline steps:
+      1. parse_document(file_path)
+      2. summarize_document(text)
+      3. extract_financial_entities(text)
+      4. TaxQA().ask(...) for each extracted deduction section
     """
-    # Deferred import — avoids pulling in pymupdf / transformers at startup.
     from nlp_pipeline.src.insight import generate_insights  # noqa: PLC0415
 
-    return generate_insights(file_path)
+    try:
+        return generate_insights(file_path)
+    except Exception as exc:
+        raise ProviderError(
+            "Insight pipeline failure",
+            f"Failed to run document insight pipeline: {type(exc).__name__}: {str(exc)}",
+        ) from exc

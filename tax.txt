@@ -1,0 +1,26 @@
+FORM NO. 16
+[See rule 31(1)(a)]
+PART B (Annexure)
+Certificate under section 203 of the Income-tax Act, 1961 for tax deducted at source on salary.
+
+Assessment Year: 2026-27
+Period: 01-Apr-2025 to 31-Mar-2026
+Employer: TechCorp India Pvt Ltd (TAN: BLRT12345A, PAN: AABCT1234F)
+Employee: Rajesh Verma (PAN: ABCDV5678K)
+
+1. Gross Salary under Section 17(1): INR 1,500,000
+2. Standard Deduction under Section 16(ia): INR 75,000
+3. Total Income chargeable under head 'Salaries': INR 1,425,000
+4. Deductions under Chapter VI-A:
+   - Section 80C (PPF, ELSS, Life Insurance Premium): INR 150,000
+   - Section 80D (Health Insurance Premium): INR 25,000
+   Total Deductions: INR 175,000
+5. Total Taxable Income: INR 1,250,000
+6. Tax on Total Income: INR 115,000
+7. Health and Education Cess (4%): INR 4,600
+8. Net Tax Payable: INR 119,600
+9. Total Tax Deducted at Source (TDS): INR 119,600
+10. Balance Tax Payable / Refundable: NIL
+
+Filing Deadline: 31st July 2026.
+Verified by Employer Authorised Signatory.
