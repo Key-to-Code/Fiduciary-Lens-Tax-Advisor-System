@@ -33,6 +33,7 @@ from fastapi.responses import RedirectResponse
 
 from backend.app.core.config import settings
 from backend.app.api.routes import health as health_router
+from backend.app.api.routes import documents as documents_router
 
 # ── Application instance ─────────────────────────────────────────────────────
 app = FastAPI(
@@ -64,6 +65,7 @@ app.add_middleware(
 API_PREFIX = "/api/v1"
 
 app.include_router(health_router.router, prefix=API_PREFIX)
+app.include_router(documents_router.router, prefix=API_PREFIX)
 
 # ── Convenience redirect ──────────────────────────────────────────────────────
 @app.get("/", include_in_schema=False)

@@ -43,6 +43,11 @@ class Settings(BaseSettings):
         "http://127.0.0.1:8080",
     ]
 
+    # ── Document upload ───────────────────────────────────────────────────────
+    # Maximum allowed upload size in megabytes.  Override via UPLOAD_MAX_SIZE_MB
+    # in the .env file.  20 MB is generous for tax PDFs (Form 16 ~600 KB).
+    UPLOAD_MAX_SIZE_MB: int = 20
+
     model_config = SettingsConfigDict(
         # Load from .env at the project root; ignore missing file gracefully.
         env_file=str(_PROJECT_ROOT / ".env"),
