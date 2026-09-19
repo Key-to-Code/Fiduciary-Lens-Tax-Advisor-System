@@ -9,9 +9,9 @@ POST /api/v1/documents/upload
 from __future__ import annotations
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
-from fastapi.responses import JSONResponse
 
-from backend.app.schemas.document import DocumentUploadResponse, ErrorDetail
+from backend.app.schemas.document import DocumentUploadResponse
+from backend.app.schemas.error import ErrorResponse
 from backend.app.services.document_service import process_upload
 from backend.app.core.config import settings
 
@@ -22,61 +22,92 @@ router = APIRouter(prefix="/documents", tags=["Documents"])
     "/upload",
     response_model=DocumentUploadResponse,
     responses={
-        400: {"model": ErrorDetail, "description": "Validation error (bad type, empty, invalid PDF)"},
-        413: {"model": ErrorDetail, "description": "File exceeds size limit"},
-        422: {"description": "Malformed request — missing or invalid field"},
-        500: {"model": ErrorDetail, "description": "Extraction failed unexpectedly"},
+        200: {"model": DocumentUploadResponse, "description": "Document parsed and text extracted successfully"},
+        400: {"model": ErrorResponse, "description": "Validation error (unsupported format, empty file, invalid PDF header)"},
+        413: {"model": ErrorResponse, "description": "File exceeds size limit"},
+        422: {"model": ErrorResponse, "description": "Unprocessable document content (empty or insufficient text, corrupted file)"},
+        500: {"model": ErrorResponse, "description": "Extraction failed unexpectedly"},
     },
     summary="Upload a legal document",
     description=(
-        "Upload a legal document for text extraction.\n\n"
+        "Upload a legal or tax document for validation and text extraction.\n\n"
         "**Supported formats**: `.pdf`, `.txt`, `.md`, `.csv`\n\n"
         f"**Size limit**: configurable via `UPLOAD_MAX_SIZE_MB` env var "
-        f"(default: 20 MB)\n\n"
-        "The endpoint validates the file, extracts its text using the existing "
+        f"(default: {settings.UPLOAD_MAX_SIZE_MB} MB)\n\n"
+        "The endpoint validates the file, extracts its text using the project's "
         "NLP pipeline parser, and returns the extracted text length and a preview. "
-        "The file is not persisted after extraction."
+        "The file is not persisted on the filesystem after extraction."
     ),
 )
 async def upload_document(
-    file: UploadFile = File(..., description="Legal document to upload (.pdf, .txt, .md, .csv)"),
+    file: UploadFile = File(..., description="Legal document file (.pdf, .txt, .md, .csv)"),
 ) -> DocumentUploadResponse:
     """
     Validate and extract text from an uploaded legal document.
 
     - Accepts **multipart/form-data** with a `file` field.
     - Returns document metadata and a preview of the extracted text.
-    - The temporary file is deleted immediately after extraction.
+    - Temporary files are deleted immediately after extraction in a `finally` block.
     """
     try:
         result = await process_upload(file)
         return DocumentUploadResponse(**result)
 
     except ValueError as exc:
-        # exc.args: (error_title, detail_message) from document_service
         title, detail = (exc.args[0], exc.args[1]) if len(exc.args) >= 2 else (str(exc), None)
+        title_lower = (title or "").lower()
+
+        if "unsupported" in title_lower:
+            code = "UNSUPPORTED_FILE_TYPE"
+            status_code = 400
+        elif "empty file" in title_lower:
+            code = "EMPTY_FILE"
+            status_code = 400
+        elif "invalid pdf" in title_lower:
+            code = "INVALID_PDF"
+            status_code = 400
+        elif any(k in title_lower for k in ("empty document content", "insufficient")):
+            code = "INSUFFICIENT_CONTENT"
+            status_code = 422
+        elif "corrupted" in title_lower:
+            code = "CORRUPTED_DOCUMENT"
+            status_code = 422
+        else:
+            code = "BAD_REQUEST"
+            status_code = 400
+
         raise HTTPException(
-            status_code=400,
-            detail=ErrorDetail(error=title, detail=detail).model_dump(),
+            status_code=status_code,
+            detail={"code": code, "message": title, "details": detail},
         )
 
     except RuntimeError as exc:
-        # RuntimeError is used by document_service to signal 413 (too large)
-        # and by parse_document to signal PDF parse failures.
         title, detail = (exc.args[0], exc.args[1]) if len(exc.args) >= 2 else (str(exc), None)
-        is_too_large = "too large" in (title or "").lower()
+        title_lower = (title or "").lower()
+
+        if "too large" in title_lower:
+            raise HTTPException(
+                status_code=413,
+                detail={"code": "FILE_TOO_LARGE", "message": title, "details": detail},
+            )
+        if "unavailable" in title_lower:
+            raise HTTPException(
+                status_code=503,
+                detail={"code": "DEPENDENCY_ERROR", "message": title, "details": detail},
+            )
+
         raise HTTPException(
-            status_code=413 if is_too_large else 422,
-            detail=ErrorDetail(error=title, detail=detail).model_dump(),
+            status_code=422,
+            detail={"code": "PROCESSING_ERROR", "message": title, "details": detail},
         )
 
     except Exception as exc:  # noqa: BLE001
-        # Catch-all — log but do not expose internal details to the client.
         print(f"[upload] unexpected error: {type(exc).__name__}: {exc}")
         raise HTTPException(
             status_code=500,
-            detail=ErrorDetail(
-                error="Extraction failed",
-                detail="An unexpected error occurred while processing the document.",
-            ).model_dump(),
+            detail={
+                "code": "EXTRACTION_FAILED",
+                "message": "Extraction failed",
+                "details": "An unexpected error occurred while processing the document.",
+            },
         )

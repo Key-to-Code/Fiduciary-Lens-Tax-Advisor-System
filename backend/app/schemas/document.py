@@ -4,20 +4,53 @@ Pydantic schemas for the document upload endpoint.
 
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from backend.app.schemas.error import ErrorDetail, ErrorResponse
 
 
 class DocumentUploadResponse(BaseModel):
-    """Successful response body for POST /documents/upload."""
+    """Successful response body for POST /api/v1/documents/upload."""
 
-    success: bool
-    document_id: str
-    filename: str       # sanitised display name; never a filesystem path
-    file_size_bytes: int
-    mime_type: str
-    char_count: int     # length of the extracted text
-    preview: str        # first 500 chars of extracted text
-    message: str
+    success: bool = Field(
+        True,
+        description="Indicates whether document upload and parsing was successful",
+    )
+    document_id: str = Field(
+        ...,
+        description="Unique processing identifier generated for this document",
+        examples=["550e8400-e29b-41d4-a716-446655440000"],
+    )
+    filename: str = Field(
+        ...,
+        description="Sanitized display filename (never an internal filesystem path)",
+        examples=["form16.pdf"],
+    )
+    file_size_bytes: int = Field(
+        ...,
+        ge=0,
+        description="Size of the uploaded document in bytes",
+        examples=[634075],
+    )
+    mime_type: str = Field(
+        ...,
+        description="MIME type detected for the uploaded document",
+        examples=["application/pdf"],
+    )
+    char_count: int = Field(
+        ...,
+        ge=0,
+        description="Number of text characters extracted from the document",
+        examples=[12340],
+    )
+    preview: str = Field(
+        ...,
+        description="Initial text preview extracted from the document (up to 500 characters)",
+        examples=["FORM 16 — Certificate under section 203 of the Income-tax Act..."],
+    )
+    message: str = Field(
+        "Document uploaded and text extracted successfully",
+        description="Human-readable status message",
+    )
 
     model_config = {
         "json_schema_extra": {
@@ -35,19 +68,4 @@ class DocumentUploadResponse(BaseModel):
     }
 
 
-class ErrorDetail(BaseModel):
-    """Error response body — returned for 4xx and 5xx responses."""
-
-    success: bool = False
-    error: str
-    detail: str | None = None
-
-    model_config = {
-        "json_schema_extra": {
-            "example": {
-                "success": False,
-                "error": "Unsupported file type",
-                "detail": "'.docx' is not supported. Allowed: .pdf, .txt, .md, .csv",
-            }
-        }
-    }
+__all__ = ["DocumentUploadResponse", "ErrorDetail", "ErrorResponse"]
