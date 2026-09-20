@@ -36,6 +36,15 @@ class SummarizeRequest(BaseModel):
         description="Optional document or filename reference for tracking and display",
         examples=["tax_return_summary.txt"],
     )
+    document_id: Optional[str] = Field(
+        None,
+        description=(
+            "Optional existing document UUID. When provided, the summary is stored "
+            "against that document and no new Document row is created. When omitted, "
+            "a new document record is created (backward-compatible default)."
+        ),
+        examples=["550e8400-e29b-41d4-a716-446655440000"],
+    )
 
     @field_validator("provider")
     @classmethod

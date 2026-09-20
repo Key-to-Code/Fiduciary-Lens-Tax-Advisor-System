@@ -24,7 +24,7 @@ from pathlib import Path
 # resolution for 'shared', 'rag_model', and 'nlp_pipeline' must work without
 # any change to those packages. Inserting the project root once here mirrors
 # the sys.path.insert(0, ...) found in the existing CLI scripts.
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
@@ -35,7 +35,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from sqlalchemy import text
+
 from backend.app.core.config import settings
+from backend.app.db.session import engine
 from backend.app.schemas.error import ErrorDetail, ErrorResponse
 from backend.app.api.routes import health as health_router
 from backend.app.api.routes import documents as documents_router
@@ -71,6 +74,17 @@ async def lifespan(app: FastAPI):
     print(f"[startup] environment : {settings.APP_ENV}")
     print(f"[startup] project root: {_PROJECT_ROOT}")
     print(f"[startup] CORS origins: {settings.CORS_ORIGINS}")
+    try:
+        with engine.connect() as conn:
+            db_name = conn.execute(text("SELECT current_database()")).scalar()
+        print(f"[startup] postgresql  : {db_name}")
+        if db_name != "legal_summarizer":
+            print(
+                "[startup] WARNING: connected database is not 'legal_summarizer'. "
+                "Check DATABASE_URL in the project-root .env."
+            )
+    except Exception as exc:  # noqa: BLE001
+        print(f"[startup] WARNING: PostgreSQL connection failed: {type(exc).__name__}: {exc}")
     print("[startup] API docs available at /docs")
     yield
     print(f"[shutdown] {settings.APP_NAME} shutting down.")

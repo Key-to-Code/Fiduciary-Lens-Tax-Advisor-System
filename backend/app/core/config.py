@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     # in the .env file.  20 MB is generous for tax PDFs (Form 16 ~600 KB).
     UPLOAD_MAX_SIZE_MB: int = 20
 
+    # ── Database (PostgreSQL + SQLAlchemy) — Stage 5 ─────────────────────────
+    DATABASE_URL: str = "postgresql+psycopg://localhost:5432/legal_summarizer"
+
     model_config = SettingsConfigDict(
         # Load from .env at the project root; ignore missing file gracefully.
         env_file=str(_PROJECT_ROOT / ".env"),
