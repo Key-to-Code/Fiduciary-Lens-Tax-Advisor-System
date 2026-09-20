@@ -11,12 +11,13 @@ Endpoints:
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 
+from backend.app.api.deps import get_current_user
 from backend.app.core.config import settings
-from backend.app.db.models import Document
+from backend.app.db.models import Document, User
 from backend.app.db.session import get_db
 from backend.app.schemas.document import (
     DocumentDeleteResponse,
@@ -32,12 +33,41 @@ from backend.app.services.document_service import extract_document_text, _PREVIE
 router = APIRouter(prefix="/documents", tags=["Documents"])
 
 
+def _document_not_found(document_id: str) -> HTTPException:
+    """HTTP 404 for missing *and* cross-user access (does not reveal existence)."""
+    return HTTPException(
+        status_code=404,
+        detail={
+            "code": "DOCUMENT_NOT_FOUND",
+            "message": f"Document with ID '{document_id}' not found.",
+            "details": None,
+        },
+    )
+
+
+def _get_owned_document(
+    db: Session,
+    document_id: str,
+    user_id: str,
+    *,
+    with_summaries: bool = False,
+) -> Document:
+    stmt = select(Document).where(Document.id == document_id, Document.user_id == user_id)
+    if with_summaries:
+        stmt = stmt.options(selectinload(Document.summaries))
+    doc = db.scalars(stmt).first()
+    if doc is None:
+        raise _document_not_found(document_id)
+    return doc
+
+
 @router.post(
     "/upload",
     response_model=DocumentUploadResponse,
     responses={
         200: {"model": DocumentUploadResponse, "description": "Document parsed, text extracted, and metadata saved"},
         400: {"model": ErrorResponse, "description": "Validation error (unsupported format, empty file, invalid PDF header)"},
+        401: {"model": ErrorResponse, "description": "Missing or invalid JWT"},
         413: {"model": ErrorResponse, "description": "File exceeds size limit"},
         422: {"model": ErrorResponse, "description": "Unprocessable document content (empty or insufficient text, corrupted file)"},
         500: {"model": ErrorResponse, "description": "Extraction or database persistence failed unexpectedly"},
@@ -49,12 +79,14 @@ router = APIRouter(prefix="/documents", tags=["Documents"])
         f"**Size limit**: configurable via `UPLOAD_MAX_SIZE_MB` env var "
         f"(default: {settings.UPLOAD_MAX_SIZE_MB} MB)\n\n"
         "The endpoint validates the file, extracts text using the NLP parser, and "
-        "persists the document metadata in PostgreSQL. Temporary files are deleted immediately after extraction."
+        "persists the document metadata in PostgreSQL owned by the authenticated user. "
+        "Temporary files are deleted immediately after extraction. Requires a Bearer JWT."
     ),
 )
 async def upload_document(
     file: UploadFile = File(..., description="Legal document file (.pdf, .txt, .md, .csv)"),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> DocumentUploadResponse:
     """
     Validate and extract text from an uploaded legal document, then persist metadata in PostgreSQL.
@@ -128,6 +160,7 @@ async def upload_document(
             file_type=doc.mime_type,
             file_size=doc.file_size_bytes,
             processing_status="completed",
+            user_id=current_user.id,
         )
         db.add(db_doc)
         db.commit()
@@ -162,31 +195,39 @@ async def upload_document(
     response_model=DocumentListResponse,
     responses={
         200: {"model": DocumentListResponse, "description": "List of persisted document records"},
+        401: {"model": ErrorResponse, "description": "Missing or invalid JWT"},
         500: {"model": ErrorResponse, "description": "Database query failure"},
     },
     summary="List uploaded documents",
     description=(
-        "Retrieve history of previously uploaded legal document metadata.\n\n"
+        "Retrieve history of previously uploaded legal document metadata for the "
+        "authenticated user only.\n\n"
         "Returns document_id and metadata only (no full summary text). "
         "Use GET /api/v1/documents/{document_id} to load associated summaries.\n\n"
-        "**Note**: In Stage 5, this returns all documents in persistent storage "
-        "(user-specific isolation and authentication will be added in Stage 6)."
+        "Cross-user documents are never included."
     ),
 )
 def list_documents(
     skip: int = Query(0, ge=0, description="Pagination offset"),
     limit: int = Query(100, ge=1, le=500, description="Max number of records to return"),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> DocumentListResponse:
     """
-    List persisted document records ordered by creation date descending.
+    List persisted document records owned by the current user, newest first.
     """
     try:
-        stmt = select(Document).order_by(desc(Document.created_at)).offset(skip).limit(limit)
+        owner_filter = Document.user_id == current_user.id
+        stmt = (
+            select(Document)
+            .where(owner_filter)
+            .order_by(desc(Document.created_at))
+            .offset(skip)
+            .limit(limit)
+        )
         docs = db.scalars(stmt).all()
 
-        total_stmt = select(Document)
-        total = len(db.scalars(total_stmt).all())
+        total = db.scalar(select(func.count()).select_from(Document).where(owner_filter)) or 0
 
         return DocumentListResponse(
             success=True,
@@ -221,36 +262,26 @@ def list_documents(
     response_model=DocumentDetailResponse,
     responses={
         200: {"model": DocumentDetailResponse, "description": "Document details with associated summaries"},
-        404: {"model": ErrorResponse, "description": "Document not found"},
+        401: {"model": ErrorResponse, "description": "Missing or invalid JWT"},
+        404: {"model": ErrorResponse, "description": "Document not found or not owned by the current user"},
         500: {"model": ErrorResponse, "description": "Database query failure"},
     },
     summary="Get document details",
-    description="Retrieve a specific document record and its associated summaries by document ID.",
+    description=(
+        "Retrieve a specific document record and its associated summaries by document ID. "
+        "Documents owned by another user return HTTP 404 so their existence is not revealed."
+    ),
 )
 def get_document(
     document_id: str,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> DocumentDetailResponse:
     """
-    Retrieve document record and any generated summaries.
+    Retrieve an owned document record and any generated summaries.
     """
     try:
-        stmt = (
-            select(Document)
-            .options(selectinload(Document.summaries))
-            .where(Document.id == document_id)
-        )
-        doc = db.scalars(stmt).first()
-
-        if doc is None:
-            raise HTTPException(
-                status_code=404,
-                detail={
-                    "code": "DOCUMENT_NOT_FOUND",
-                    "message": f"Document with ID '{document_id}' not found.",
-                    "details": None,
-                },
-            )
+        doc = _get_owned_document(db, document_id, current_user.id, with_summaries=True)
 
         return DocumentDetailResponse(
             document_id=doc.id,
@@ -291,32 +322,26 @@ def get_document(
     response_model=DocumentDeleteResponse,
     responses={
         200: {"model": DocumentDeleteResponse, "description": "Document and associated summaries successfully deleted"},
-        404: {"model": ErrorResponse, "description": "Document not found"},
+        401: {"model": ErrorResponse, "description": "Missing or invalid JWT"},
+        404: {"model": ErrorResponse, "description": "Document not found or not owned by the current user"},
         500: {"model": ErrorResponse, "description": "Database deletion failure"},
     },
     summary="Delete document",
-    description="Delete a document and all its associated summaries from persistent database storage.",
+    description=(
+        "Delete an owned document and all its associated summaries. "
+        "Another user's document_id returns HTTP 404."
+    ),
 )
 def delete_document(
     document_id: str,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> DocumentDeleteResponse:
     """
-    Delete document and cascade-delete its summaries.
+    Delete an owned document and cascade-delete its summaries.
     """
     try:
-        stmt = select(Document).where(Document.id == document_id)
-        doc = db.scalars(stmt).first()
-
-        if doc is None:
-            raise HTTPException(
-                status_code=404,
-                detail={
-                    "code": "DOCUMENT_NOT_FOUND",
-                    "message": f"Document with ID '{document_id}' not found.",
-                    "details": None,
-                },
-            )
+        doc = _get_owned_document(db, document_id, current_user.id)
 
         db.delete(doc)
         db.commit()

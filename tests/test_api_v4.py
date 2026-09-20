@@ -34,12 +34,6 @@ from backend.app.schemas import (
     SummarizeResponse,
 )
 
-
-@pytest.fixture(scope="module")
-def client() -> TestClient:
-    return TestClient(app)
-
-
 # ── 1. Health Endpoint Tests ───────────────────────────────────────────────────
 
 def test_health_check_status_and_schema(client: TestClient):
@@ -58,12 +52,13 @@ def test_health_check_status_and_schema(client: TestClient):
 
 # ── 2. Document Upload Tests ───────────────────────────────────────────────────
 
-def test_upload_valid_text_document(client: TestClient):
+def test_upload_valid_text_document(client: TestClient, auth_headers: dict):
     """POST /api/v1/documents/upload with valid .txt document succeeds with DocumentUploadResponse."""
     content = b"Tax assessment year 2026-27 under the Income-tax Act. Standard deduction Section 16(ia) is INR 75,000."
     response = client.post(
         "/api/v1/documents/upload",
         files={"file": ("tax_summary.txt", content, "text/plain")},
+        headers=auth_headers,
     )
     assert response.status_code == 200
     data = response.json()
@@ -77,12 +72,13 @@ def test_upload_valid_text_document(client: TestClient):
     assert "Section 16" in validated.preview
 
 
-def test_upload_valid_markdown_document(client: TestClient):
+def test_upload_valid_markdown_document(client: TestClient, auth_headers: dict):
     """POST /api/v1/documents/upload with valid .md document succeeds."""
     content = b"# Tax Advisory Notice\nDeduction under Section 80C claimed: INR 1,50,000."
     response = client.post(
         "/api/v1/documents/upload",
         files={"file": ("notice.md", content, "text/markdown")},
+        headers=auth_headers,
     )
     assert response.status_code == 200
     data = response.json()
@@ -91,11 +87,12 @@ def test_upload_valid_markdown_document(client: TestClient):
     assert validated.mime_type == "text/markdown"
 
 
-def test_upload_unsupported_file_extension(client: TestClient):
+def test_upload_unsupported_file_extension(client: TestClient, auth_headers: dict):
     """POST /api/v1/documents/upload with unsupported extension returns 400 ErrorResponse."""
     response = client.post(
         "/api/v1/documents/upload",
         files={"file": ("malicious.exe", b"MZ\x90\x00binary content", "application/octet-stream")},
+        headers=auth_headers,
     )
     assert response.status_code == 400
     data = response.json()
@@ -107,11 +104,12 @@ def test_upload_unsupported_file_extension(client: TestClient):
     assert ".exe" in str(validated.error.details)
 
 
-def test_upload_empty_file(client: TestClient):
+def test_upload_empty_file(client: TestClient, auth_headers: dict):
     """POST /api/v1/documents/upload with empty file returns 400 ErrorResponse."""
     response = client.post(
         "/api/v1/documents/upload",
         files={"file": ("empty.txt", b"", "text/plain")},
+        headers=auth_headers,
     )
     assert response.status_code == 400
     data = response.json()
@@ -122,11 +120,12 @@ def test_upload_empty_file(client: TestClient):
     assert "Empty file" in validated.error.message
 
 
-def test_upload_invalid_pdf_header(client: TestClient):
+def test_upload_invalid_pdf_header(client: TestClient, auth_headers: dict):
     """POST /api/v1/documents/upload with .pdf extension lacking %PDF header returns 400."""
     response = client.post(
         "/api/v1/documents/upload",
         files={"file": ("corrupt.pdf", b"NOT_A_REAL_PDF_HEADER", "application/pdf")},
+        headers=auth_headers,
     )
     assert response.status_code == 400
     data = response.json()
@@ -137,11 +136,12 @@ def test_upload_invalid_pdf_header(client: TestClient):
     assert "Invalid PDF" in validated.error.message
 
 
-def test_upload_insufficient_content(client: TestClient):
+def test_upload_insufficient_content(client: TestClient, auth_headers: dict):
     """POST /api/v1/documents/upload with insufficient characters returns 422."""
     response = client.post(
         "/api/v1/documents/upload",
         files={"file": ("tiny.txt", b"abc", "text/plain")},
+        headers=auth_headers,
     )
     assert response.status_code == 422
     data = response.json()
@@ -151,7 +151,7 @@ def test_upload_insufficient_content(client: TestClient):
     assert validated.error.code == "INSUFFICIENT_CONTENT"
 
 
-def test_upload_oversized_file(client: TestClient, monkeypatch):
+def test_upload_oversized_file(client: TestClient, monkeypatch, auth_headers: dict):
     """POST /api/v1/documents/upload exceeding size limit returns 413 ErrorResponse."""
     from backend.app.core.config import settings
     # Temporarily set limit to 0 MB to trigger size check without allocating 20 MB
@@ -160,6 +160,7 @@ def test_upload_oversized_file(client: TestClient, monkeypatch):
     response = client.post(
         "/api/v1/documents/upload",
         files={"file": ("large.txt", b"Some content", "text/plain")},
+        headers=auth_headers,
     )
     assert response.status_code == 413
     data = response.json()
@@ -172,7 +173,7 @@ def test_upload_oversized_file(client: TestClient, monkeypatch):
 
 # ── 3. Summarization Endpoint Tests ─────────────────────────────────────────────
 
-def test_summarize_file_upload(client: TestClient):
+def test_summarize_file_upload(client: TestClient, auth_headers: dict):
     """POST /api/v1/summarize with valid file upload returns SummarizeResponse."""
     text = (
         "FORM 16 PART B. Gross salary INR 15,00,000. Standard deduction INR 75,000. "
@@ -182,6 +183,7 @@ def test_summarize_file_upload(client: TestClient):
     response = client.post(
         "/api/v1/summarize?provider=extractive",
         files={"file": ("Form16.txt", text.encode("utf-8"), "text/plain")},
+        headers=auth_headers,
     )
     assert response.status_code == 200
     data = response.json()
@@ -195,7 +197,7 @@ def test_summarize_file_upload(client: TestClient):
     assert validated.processing_time >= 0.0
 
 
-def test_summarize_text_endpoint_valid(client: TestClient):
+def test_summarize_text_endpoint_valid(client: TestClient, auth_headers: dict):
     """POST /api/v1/summarize/text with SummarizeRequest returns SummarizeResponse."""
     payload = {
         "text": (
@@ -205,7 +207,7 @@ def test_summarize_text_endpoint_valid(client: TestClient):
         "provider": "extractive",
         "document_name": "tax_rules.txt",
     }
-    response = client.post("/api/v1/summarize/text", json=payload)
+    response = client.post("/api/v1/summarize/text", json=payload, headers=auth_headers)
     assert response.status_code == 200
     data = response.json()
 
@@ -216,9 +218,9 @@ def test_summarize_text_endpoint_valid(client: TestClient):
     assert len(validated.summary) > 0
 
 
-def test_summarize_text_short_payload_validation_error(client: TestClient):
+def test_summarize_text_short_payload_validation_error(client: TestClient, auth_headers: dict):
     """POST /api/v1/summarize/text with text < 5 chars returns 422 VALIDATION_ERROR."""
-    response = client.post("/api/v1/summarize/text", json={"text": "Hi"})
+    response = client.post("/api/v1/summarize/text", json={"text": "Hi"}, headers=auth_headers)
     assert response.status_code == 422
     data = response.json()
 
@@ -228,13 +230,13 @@ def test_summarize_text_short_payload_validation_error(client: TestClient):
     assert any("text" in str(item) for item in validated.error.details)
 
 
-def test_summarize_text_invalid_provider_validation_error(client: TestClient):
+def test_summarize_text_invalid_provider_validation_error(client: TestClient, auth_headers: dict):
     """POST /api/v1/summarize/text with invalid provider returns 422 VALIDATION_ERROR."""
     payload = {
         "text": "Valid document text that is long enough to pass length validation.",
         "provider": "invalid_unknown_provider",
     }
-    response = client.post("/api/v1/summarize/text", json=payload)
+    response = client.post("/api/v1/summarize/text", json=payload, headers=auth_headers)
     assert response.status_code == 422
     data = response.json()
 
@@ -244,12 +246,13 @@ def test_summarize_text_invalid_provider_validation_error(client: TestClient):
     assert any("provider" in str(item) for item in validated.error.details)
 
 
-def test_summarize_query_invalid_provider(client: TestClient):
+def test_summarize_query_invalid_provider(client: TestClient, auth_headers: dict):
     """POST /api/v1/summarize with invalid ?provider= returns 400 INVALID_PROVIDER."""
     text = b"Valid document text that is long enough to pass length validation."
     response = client.post(
         "/api/v1/summarize?provider=bad_provider",
         files={"file": ("doc.txt", text, "text/plain")},
+        headers=auth_headers,
     )
     assert response.status_code == 400
     data = response.json()
@@ -259,14 +262,14 @@ def test_summarize_query_invalid_provider(client: TestClient):
     assert validated.error.code == "INVALID_PROVIDER"
 
 
-def test_summarize_direct_json_body(client: TestClient):
+def test_summarize_direct_json_body(client: TestClient, auth_headers: dict):
     """POST /api/v1/summarize accepting direct JSON payload works transparently."""
     payload = {
         "text": "Direct JSON summarization test for Section 80C deductions and Section 115BAC.",
         "provider": "extractive",
         "document_name": "direct_json.txt",
     }
-    response = client.post("/api/v1/summarize", json=payload)
+    response = client.post("/api/v1/summarize", json=payload, headers=auth_headers)
     assert response.status_code == 200
     data = response.json()
     validated = SummarizeResponse.model_validate(data)
@@ -287,11 +290,12 @@ def test_404_error_consistency(client: TestClient):
     assert validated.error.code == "NOT_FOUND"
 
 
-def test_no_sensitive_info_leaked_in_errors(client: TestClient):
+def test_no_sensitive_info_leaked_in_errors(client: TestClient, auth_headers: dict):
     """Errors must not expose internal paths, tokens, or tracebacks."""
     response = client.post(
         "/api/v1/documents/upload",
         files={"file": ("../../etc/passwd.exe", b"bad", "application/octet-stream")},
+        headers=auth_headers,
     )
     assert response.status_code in (400, 422)
     data = response.json()

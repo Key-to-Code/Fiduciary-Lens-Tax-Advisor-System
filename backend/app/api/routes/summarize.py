@@ -25,11 +25,12 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Reques
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from backend.app.db.models import Document, Summary
+from backend.app.api.deps import get_current_user
+from backend.app.db.models import Document, Summary, User
 from backend.app.db.session import get_db
 from backend.app.schemas.error import ErrorResponse
 from backend.app.schemas.summarize import SummarizeRequest, SummarizeResponse
-from backend.app.services.document_service import extract_document_text
+from backend.app.services.document_service import extract_document_text, sanitize_display_filename
 from backend.app.services.rag_service import ProviderError, summarize_legal_document
 
 router = APIRouter(tags=["Summarization"])
@@ -71,6 +72,7 @@ def _persist_and_summarize(
     char_count: int,
     mime_type: str,
     provider: Optional[str],
+    owner_id: str,
     doc_id: Optional[str] = None,
     require_existing: bool = False,
 ) -> SummarizeResponse:
@@ -79,11 +81,25 @@ def _persist_and_summarize(
     summarization engine, and store the resulting summary in PostgreSQL.
 
     If ``require_existing`` is True, ``doc_id`` must refer to an existing
-    Document row. No additional Document row is created.
-    If ``require_existing`` is False, a new Document row is created when
-    ``doc_id`` is absent or not already present.
+    Document row owned by ``owner_id``. No additional Document row is created.
+    If ``require_existing`` is False, a new Document row owned by ``owner_id``
+    is created when ``doc_id`` is absent or not already present.
+
+    Cross-user document_id values are treated as not found (HTTP 404).
     """
     target_id = _normalize_optional_document_id(doc_id)
+
+    def _require_owner(existing: Document, document_id: str) -> Document:
+        if existing.user_id != owner_id:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "code": "DOCUMENT_NOT_FOUND",
+                    "message": f"Document with ID '{document_id}' not found.",
+                    "details": "Summarization did not create a new document because document_id was supplied.",
+                },
+            )
+        return existing
 
     if require_existing:
         if not target_id:
@@ -105,7 +121,7 @@ def _persist_and_summarize(
                     "details": "Summarization did not create a new document because document_id was supplied.",
                 },
             )
-        db_doc = existing_doc
+        db_doc = _require_owner(existing_doc, target_id)
         try:
             db_doc.processing_status = "processing"
             db.commit()
@@ -126,7 +142,7 @@ def _persist_and_summarize(
         try:
             existing_doc = db.get(Document, target_id)
             if existing_doc:
-                db_doc = existing_doc
+                db_doc = _require_owner(existing_doc, target_id)
                 db_doc.processing_status = "processing"
             else:
                 db_doc = Document(
@@ -135,6 +151,7 @@ def _persist_and_summarize(
                     file_type=mime_type,
                     file_size=file_size_bytes,
                     processing_status="processing",
+                    user_id=owner_id,
                 )
                 db.add(db_doc)
             db.commit()
@@ -222,6 +239,8 @@ def _persist_and_summarize(
     responses={
         200: {"model": SummarizeResponse, "description": "Document summarized and persisted successfully"},
         400: {"model": ErrorResponse, "description": "Validation error (unsupported file type, empty file, invalid provider)"},
+        401: {"model": ErrorResponse, "description": "Missing or invalid JWT"},
+        404: {"model": ErrorResponse, "description": "document_id not found or not owned by the current user"},
         413: {"model": ErrorResponse, "description": "File exceeds upload size limit"},
         422: {"model": ErrorResponse, "description": "Unprocessable content (empty extracted text, insufficient text, corrupted document)"},
         500: {"model": ErrorResponse, "description": "Unexpected server or database error"},
@@ -236,12 +255,12 @@ def _persist_and_summarize(
         "the generated summary in PostgreSQL.\n\n"
         "**Document identity**\n\n"
         "- **CASE A** — optional form field `document_id` is supplied: the existing "
-        "Document row is reused. No new document is created. Identity is the UUID, "
-        "not the filename.\n"
-        "- **CASE B** — `document_id` is omitted: a new Document row is created "
-        "(backward-compatible default).\n\n"
-        "Also supports raw text JSON payloads sent directly to this endpoint. "
-        "JSON may include optional `document_id` with the same CASE A/B behavior."
+        "Document row is reused **only if it belongs to the authenticated user**. "
+        "No new document is created. Identity is the UUID, not the filename.\n"
+        "- **CASE B** — `document_id` is omitted: a new Document row owned by the "
+        "current user is created (backward-compatible default).\n\n"
+        "Requires a Bearer JWT. Also supports raw text JSON payloads sent directly "
+        "to this endpoint. JSON may include optional `document_id` with the same CASE A/B behavior."
     ),
 )
 async def summarize_document_endpoint(
@@ -263,6 +282,7 @@ async def summarize_document_endpoint(
         description="Optional LLM provider override ('openai', 'ollama', 'local', 'extractive', 'auto')",
     ),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> SummarizeResponse:
     """
     Validate, extract text from, summarize, and persist an uploaded legal document or direct JSON payload.
@@ -286,7 +306,7 @@ async def summarize_document_endpoint(
             ) from exc
 
         target_provider = _validate_provider_str(req_model.provider) or cleaned_provider
-        doc_name = req_model.document_name or "document.txt"
+        doc_name = sanitize_display_filename(req_model.document_name)
         text = req_model.text
         encoded_len = len(text.encode("utf-8"))
         existing_id = _normalize_optional_document_id(req_model.document_id)
@@ -299,6 +319,7 @@ async def summarize_document_endpoint(
             char_count=len(text),
             mime_type="text/plain",
             provider=target_provider,
+            owner_id=current_user.id,
             doc_id=existing_id,
             require_existing=existing_id is not None,
         )
@@ -375,6 +396,7 @@ async def summarize_document_endpoint(
         char_count=doc.char_count,
         mime_type=doc.mime_type,
         provider=cleaned_provider,
+        owner_id=current_user.id,
         doc_id=existing_id or doc.document_id,
         require_existing=existing_id is not None,
     )
@@ -386,6 +408,8 @@ async def summarize_document_endpoint(
     responses={
         200: {"model": SummarizeResponse, "description": "Text summarized and persisted successfully"},
         400: {"model": ErrorResponse, "description": "Invalid input or provider"},
+        401: {"model": ErrorResponse, "description": "Missing or invalid JWT"},
+        404: {"model": ErrorResponse, "description": "document_id not found or not owned by the current user"},
         422: {"model": ErrorResponse, "description": "Request validation error (e.g., text too short)"},
         500: {"model": ErrorResponse, "description": "Unexpected server or database error"},
         502: {"model": ErrorResponse, "description": "LLM or RAG provider failure"},
@@ -399,12 +423,13 @@ async def summarize_document_endpoint(
 async def summarize_text_endpoint(
     payload: SummarizeRequest,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> SummarizeResponse:
     """
     Summarize raw legal text passed in a JSON body via SummarizeRequest and persist in PostgreSQL.
     """
     target_provider = _validate_provider_str(payload.provider)
-    doc_name = payload.document_name or "text_input.txt"
+    doc_name = sanitize_display_filename(payload.document_name, default="text_input.txt")
     encoded_len = len(payload.text.encode("utf-8"))
     existing_id = _normalize_optional_document_id(payload.document_id)
 
@@ -416,6 +441,7 @@ async def summarize_text_endpoint(
         char_count=len(payload.text),
         mime_type="text/plain",
         provider=target_provider,
+        owner_id=current_user.id,
         doc_id=existing_id,
         require_existing=existing_id is not None,
     )

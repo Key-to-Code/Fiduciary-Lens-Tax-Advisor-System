@@ -43,21 +43,6 @@ from backend.app.schemas import (
 )
 
 
-@pytest.fixture(scope="module")
-def client() -> TestClient:
-    return TestClient(app)
-
-
-@pytest.fixture
-def db_session():
-    """Provide a direct database session for test verification and cleanup."""
-    session = SessionLocal()
-    try:
-        yield session
-    finally:
-        session.close()
-
-
 # ── 1. Database Connection & Schema Verification ─────────────────────────────
 
 def test_postgresql_connection_and_engine():
@@ -76,7 +61,12 @@ def test_database_tables_and_columns():
     assert "summaries" in tables
 
     doc_columns = {c["name"]: c for c in inspector.get_columns("documents")}
-    for required_col in ("id", "filename", "file_type", "file_size", "processing_status", "created_at", "updated_at"):
+    assert "users" in tables
+    user_columns = {c["name"]: c for c in inspector.get_columns("users")}
+    for required_col in ("id", "email", "password_hash", "created_at", "updated_at"):
+        assert required_col in user_columns, f"Missing column '{required_col}' in 'users' table"
+
+    for required_col in ("id", "filename", "file_type", "file_size", "processing_status", "created_at", "updated_at", "user_id"):
         assert required_col in doc_columns, f"Missing column '{required_col}' in 'documents' table"
 
     sum_columns = {c["name"]: c for c in inspector.get_columns("summaries")}
@@ -87,10 +77,13 @@ def test_database_tables_and_columns():
     fks = inspector.get_foreign_keys("summaries")
     assert any(fk["referred_table"] == "documents" and "id" in fk["referred_columns"] for fk in fks)
 
+    doc_fks = inspector.get_foreign_keys("documents")
+    assert any(fk["referred_table"] == "users" and "id" in fk["referred_columns"] for fk in doc_fks)
+
 
 # ── 2. Document Upload Persistence ───────────────────────────────────────────
 
-def test_upload_document_creates_database_record(client: TestClient, db_session):
+def test_upload_document_creates_database_record(client: TestClient, db_session, auth_user, auth_headers):
     """POST /api/v1/documents/upload persists document metadata in PostgreSQL."""
     content = b"Income-tax Act assessment provisions and Section 80C deductions for tax year 2026."
     filename = "stage5_test_upload.txt"
@@ -98,6 +91,7 @@ def test_upload_document_creates_database_record(client: TestClient, db_session)
     response = client.post(
         "/api/v1/documents/upload",
         files={"file": (filename, content, "text/plain")},
+        headers=auth_headers,
     )
     assert response.status_code == 200
     data = response.json()
@@ -118,6 +112,7 @@ def test_upload_document_creates_database_record(client: TestClient, db_session)
     assert db_doc.file_size == len(content)
     assert db_doc.processing_status == "completed"
     assert db_doc.created_at is not None
+    assert db_doc.user_id == auth_user["user_id"]
 
     # Cleanup
     db_session.delete(db_doc)
@@ -126,7 +121,7 @@ def test_upload_document_creates_database_record(client: TestClient, db_session)
 
 # ── 3. Summarization Persistence ──────────────────────────────────────────────
 
-def test_summarize_file_creates_document_and_summary_records(client: TestClient, db_session):
+def test_summarize_file_creates_document_and_summary_records(client: TestClient, db_session, auth_headers):
     """POST /api/v1/summarize creates both Document and Summary database records."""
     text_content = (
         "FORM 16 SUMMARY: Gross total income INR 18,00,000. Standard deduction under Section 16(ia) "
@@ -137,6 +132,7 @@ def test_summarize_file_creates_document_and_summary_records(client: TestClient,
     response = client.post(
         "/api/v1/summarize?provider=extractive",
         files={"file": (filename, text_content.encode("utf-8"), "text/plain")},
+        headers=auth_headers,
     )
     assert response.status_code == 200
     data = response.json()
@@ -163,7 +159,7 @@ def test_summarize_file_creates_document_and_summary_records(client: TestClient,
     db_session.commit()
 
 
-def test_summarize_text_creates_persisted_records(client: TestClient, db_session):
+def test_summarize_text_creates_persisted_records(client: TestClient, db_session, auth_headers):
     """POST /api/v1/summarize/text creates Document and Summary records."""
     payload = {
         "text": (
@@ -173,7 +169,7 @@ def test_summarize_text_creates_persisted_records(client: TestClient, db_session
         "provider": "extractive",
         "document_name": "direct_notice.txt",
     }
-    response = client.post("/api/v1/summarize/text", json=payload)
+    response = client.post("/api/v1/summarize/text", json=payload, headers=auth_headers)
     assert response.status_code == 200
     data = response.json()
     validated = SummarizeResponse.model_validate(data)
@@ -197,7 +193,7 @@ def test_summarize_text_creates_persisted_records(client: TestClient, db_session
 
 # ── 4. Document History & Detail Endpoints ────────────────────────────────────
 
-def test_list_documents_history(client: TestClient, db_session):
+def test_list_documents_history(client: TestClient, db_session, auth_user, auth_headers):
     """GET /api/v1/documents returns list of persisted documents."""
     doc_id = str(uuid.uuid4())
     doc = Document(
@@ -206,11 +202,12 @@ def test_list_documents_history(client: TestClient, db_session):
         file_type="text/plain",
         file_size=256,
         processing_status="completed",
+        user_id=auth_user["user_id"],
     )
     db_session.add(doc)
     db_session.commit()
 
-    response = client.get("/api/v1/documents")
+    response = client.get("/api/v1/documents", headers=auth_headers)
     assert response.status_code == 200
     data = response.json()
 
@@ -229,7 +226,7 @@ def test_list_documents_history(client: TestClient, db_session):
     db_session.commit()
 
 
-def test_get_document_detail_with_summary(client: TestClient, db_session):
+def test_get_document_detail_with_summary(client: TestClient, db_session, auth_user, auth_headers):
     """GET /api/v1/documents/{id} returns document details with associated summaries."""
     doc_id = str(uuid.uuid4())
     doc = Document(
@@ -238,6 +235,7 @@ def test_get_document_detail_with_summary(client: TestClient, db_session):
         file_type="text/plain",
         file_size=512,
         processing_status="completed",
+        user_id=auth_user["user_id"],
     )
     sum_id = str(uuid.uuid4())
     summary = Summary(
@@ -250,7 +248,7 @@ def test_get_document_detail_with_summary(client: TestClient, db_session):
     db_session.add(summary)
     db_session.commit()
 
-    response = client.get(f"/api/v1/documents/{doc_id}")
+    response = client.get(f"/api/v1/documents/{doc_id}", headers=auth_headers)
     assert response.status_code == 200
     data = response.json()
 
@@ -268,10 +266,10 @@ def test_get_document_detail_with_summary(client: TestClient, db_session):
     db_session.commit()
 
 
-def test_get_nonexistent_document_returns_404(client: TestClient):
+def test_get_nonexistent_document_returns_404(client: TestClient, auth_headers):
     """GET /api/v1/documents/{id} with invalid UUID returns 404 ErrorResponse."""
     nonexistent_id = str(uuid.uuid4())
-    response = client.get(f"/api/v1/documents/{nonexistent_id}")
+    response = client.get(f"/api/v1/documents/{nonexistent_id}", headers=auth_headers)
     assert response.status_code == 404
     data = response.json()
 
@@ -282,7 +280,7 @@ def test_get_nonexistent_document_returns_404(client: TestClient):
 
 # ── 5. Delete Endpoint & Cascade Deletion ─────────────────────────────────────
 
-def test_delete_document_and_cascade_summaries(client: TestClient, db_session):
+def test_delete_document_and_cascade_summaries(client: TestClient, db_session, auth_user, auth_headers):
     """DELETE /api/v1/documents/{id} removes document and its cascaded summaries."""
     doc_id = str(uuid.uuid4())
     doc = Document(
@@ -291,6 +289,7 @@ def test_delete_document_and_cascade_summaries(client: TestClient, db_session):
         file_type="text/plain",
         file_size=128,
         processing_status="completed",
+        user_id=auth_user["user_id"],
     )
     sum_id = str(uuid.uuid4())
     summary = Summary(
@@ -308,7 +307,7 @@ def test_delete_document_and_cascade_summaries(client: TestClient, db_session):
     assert db_session.get(Summary, sum_id) is not None
 
     # Delete via API
-    response = client.delete(f"/api/v1/documents/{doc_id}")
+    response = client.delete(f"/api/v1/documents/{doc_id}", headers=auth_headers)
     assert response.status_code == 200
     data = response.json()
 
@@ -322,10 +321,10 @@ def test_delete_document_and_cascade_summaries(client: TestClient, db_session):
     assert db_session.get(Summary, sum_id) is None
 
 
-def test_delete_nonexistent_document_returns_404(client: TestClient):
+def test_delete_nonexistent_document_returns_404(client: TestClient, auth_headers):
     """DELETE /api/v1/documents/{id} with missing ID returns 404 ErrorResponse."""
     nonexistent_id = str(uuid.uuid4())
-    response = client.delete(f"/api/v1/documents/{nonexistent_id}")
+    response = client.delete(f"/api/v1/documents/{nonexistent_id}", headers=auth_headers)
     assert response.status_code == 404
     data = response.json()
 
@@ -336,7 +335,7 @@ def test_delete_nonexistent_document_returns_404(client: TestClient):
 
 # ── 6. Error & Failure Handling ───────────────────────────────────────────────
 
-def test_summarization_failure_updates_status_no_fake_summary(client: TestClient, db_session, monkeypatch):
+def test_summarization_failure_updates_status_no_fake_summary(client: TestClient, db_session, monkeypatch, auth_user, auth_headers):
     """When summarization raises an error, document status is 'failed' and no summary is created."""
     import backend.app.api.routes.summarize as summarize_mod
     from backend.app.services.rag_service import ProviderError
@@ -350,7 +349,7 @@ def test_summarization_failure_updates_status_no_fake_summary(client: TestClient
         "text": "Valid document content that will trigger the mocked failure.",
         "document_name": "failing_doc.txt",
     }
-    response = client.post("/api/v1/summarize/text", json=payload)
+    response = client.post("/api/v1/summarize/text", json=payload, headers=auth_headers)
     assert response.status_code == 502
     data = response.json()
 
@@ -455,12 +454,13 @@ def _count_documents(db_session, doc_id: str | None = None) -> int:
     ).scalar_one()
 
 
-def test_upload_response_uses_canonical_document_id(client: TestClient, db_session):
+def test_upload_response_uses_canonical_document_id(client: TestClient, db_session, auth_headers):
     """TEST 1 — Upload returns document_id and no public id field."""
     content = b"Stage 5 identity test: Section 80C deductions and Form 16 salary details 2026."
     response = client.post(
         "/api/v1/documents/upload",
         files={"file": ("stage5_id_upload.txt", content, "text/plain")},
+        headers=auth_headers,
     )
     assert response.status_code == 200
     data = response.json()
@@ -475,7 +475,7 @@ def test_upload_response_uses_canonical_document_id(client: TestClient, db_sessi
     db_session.commit()
 
 
-def test_summarize_reuses_existing_document_id(client: TestClient, db_session):
+def test_summarize_reuses_existing_document_id(client: TestClient, db_session, auth_headers):
     """TEST 2/3 — Summarize with document_id does not create a second Document row."""
     content = (
         b"FORM 16: Gross salary INR 12,00,000. Section 80C deduction INR 1,50,000. "
@@ -484,6 +484,7 @@ def test_summarize_reuses_existing_document_id(client: TestClient, db_session):
     upload = client.post(
         "/api/v1/documents/upload",
         files={"file": ("stage5_id_test.txt", content, "text/plain")},
+        headers=auth_headers,
     )
     assert upload.status_code == 200
     doc_id = upload.json()["document_id"]
@@ -497,6 +498,7 @@ def test_summarize_reuses_existing_document_id(client: TestClient, db_session):
         "/api/v1/summarize?provider=extractive",
         files={"file": ("stage5_id_test.txt", content, "text/plain")},
         data={"document_id": doc_id},
+        headers=auth_headers,
     )
     assert response.status_code == 200
     data = response.json()
@@ -518,7 +520,7 @@ def test_summarize_reuses_existing_document_id(client: TestClient, db_session):
     db_session.commit()
 
 
-def test_get_document_detail_returns_generated_summaries(client: TestClient, db_session):
+def test_get_document_detail_returns_generated_summaries(client: TestClient, db_session, auth_headers):
     """TEST 4 — GET /documents/{id} returns summaries produced for that document."""
     content = (
         b"Tax notice: total income INR 9,50,000. Chapter VI-A deductions approved. "
@@ -527,6 +529,7 @@ def test_get_document_detail_returns_generated_summaries(client: TestClient, db_
     upload = client.post(
         "/api/v1/documents/upload",
         files={"file": ("stage5_detail_summary.txt", content, "text/plain")},
+        headers=auth_headers,
     )
     assert upload.status_code == 200
     doc_id = upload.json()["document_id"]
@@ -535,11 +538,12 @@ def test_get_document_detail_returns_generated_summaries(client: TestClient, db_
         "/api/v1/summarize?provider=extractive",
         files={"file": ("stage5_detail_summary.txt", content, "text/plain")},
         data={"document_id": doc_id},
+        headers=auth_headers,
     )
     assert summarize.status_code == 200
     generated = summarize.json()["summary"]
 
-    response = client.get(f"/api/v1/documents/{doc_id}")
+    response = client.get(f"/api/v1/documents/{doc_id}", headers=auth_headers)
     assert response.status_code == 200
     data = response.json()
     assert "id" not in data
@@ -557,17 +561,18 @@ def test_get_document_detail_returns_generated_summaries(client: TestClient, db_
     db_session.commit()
 
 
-def test_get_document_with_no_summary_returns_empty_list(client: TestClient, db_session):
+def test_get_document_with_no_summary_returns_empty_list(client: TestClient, db_session, auth_headers):
     """TEST 5 — Uploaded document without summarization returns summaries=[]."""
     content = b"Unsummarized Form 16 text with enough characters for upload validation 2026."
     upload = client.post(
         "/api/v1/documents/upload",
         files={"file": ("stage5_no_summary.txt", content, "text/plain")},
+        headers=auth_headers,
     )
     assert upload.status_code == 200
     doc_id = upload.json()["document_id"]
 
-    response = client.get(f"/api/v1/documents/{doc_id}")
+    response = client.get(f"/api/v1/documents/{doc_id}", headers=auth_headers)
     assert response.status_code == 200
     data = response.json()
     assert data["summaries"] == []
@@ -581,7 +586,7 @@ def test_get_document_with_no_summary_returns_empty_list(client: TestClient, db_
     db_session.commit()
 
 
-def test_same_filename_receives_distinct_document_ids(client: TestClient, db_session):
+def test_same_filename_receives_distinct_document_ids(client: TestClient, db_session, auth_headers):
     """TEST 6 — Identity is UUID-based; identical filenames are different documents."""
     content_a = b"First independent upload of Form 16 salary details for tax year 2026 AAA."
     content_b = b"Second independent upload of Form 16 salary details for tax year 2026 BBB."
@@ -590,10 +595,12 @@ def test_same_filename_receives_distinct_document_ids(client: TestClient, db_ses
     first = client.post(
         "/api/v1/documents/upload",
         files={"file": (filename, content_a, "text/plain")},
+        headers=auth_headers,
     )
     second = client.post(
         "/api/v1/documents/upload",
         files={"file": (filename, content_b, "text/plain")},
+        headers=auth_headers,
     )
     assert first.status_code == 200
     assert second.status_code == 200
@@ -610,7 +617,7 @@ def test_same_filename_receives_distinct_document_ids(client: TestClient, db_ses
     db_session.commit()
 
 
-def test_document_list_uses_document_id_and_counts_total(client: TestClient, db_session):
+def test_document_list_uses_document_id_and_counts_total(client: TestClient, db_session, auth_user, auth_headers):
     """TEST 7 — List endpoint exposes document_id, not a duplicate id field."""
     created_ids = []
     for idx in range(2):
@@ -618,11 +625,12 @@ def test_document_list_uses_document_id_and_counts_total(client: TestClient, db_
         response = client.post(
             "/api/v1/documents/upload",
             files={"file": (f"stage5_list_{idx}.txt", content, "text/plain")},
+            headers=auth_headers,
         )
         assert response.status_code == 200
         created_ids.append(response.json()["document_id"])
 
-    response = client.get("/api/v1/documents")
+    response = client.get("/api/v1/documents", headers=auth_headers)
     assert response.status_code == 200
     data = response.json()
     validated = DocumentListResponse.model_validate(data)
@@ -635,7 +643,10 @@ def test_document_list_uses_document_id_and_counts_total(client: TestClient, db_
         assert "summaries" not in raw
 
     db_session.expire_all()
-    db_count = _count_documents(db_session)
+    db_count = db_session.execute(
+        text("SELECT COUNT(*) FROM documents WHERE user_id = :uid"),
+        {"uid": auth_user["user_id"]},
+    ).scalar_one()
     assert validated.total == db_count
 
     for doc_id in created_ids:
@@ -643,7 +654,7 @@ def test_document_list_uses_document_id_and_counts_total(client: TestClient, db_
     db_session.commit()
 
 
-def test_delete_cascades_summaries_after_upload_summarize(client: TestClient, db_session):
+def test_delete_cascades_summaries_after_upload_summarize(client: TestClient, db_session, auth_headers):
     """TEST 8 — Delete removes the document row and cascaded summaries."""
     content = (
         b"Cascade delete Form 16: Gross salary INR 15,00,000. Section 80C INR 1,50,000. "
@@ -652,12 +663,14 @@ def test_delete_cascades_summaries_after_upload_summarize(client: TestClient, db
     upload = client.post(
         "/api/v1/documents/upload",
         files={"file": ("stage5_cascade.txt", content, "text/plain")},
+        headers=auth_headers,
     )
     doc_id = upload.json()["document_id"]
     summarize = client.post(
         "/api/v1/summarize?provider=extractive",
         files={"file": ("stage5_cascade.txt", content, "text/plain")},
         data={"document_id": doc_id},
+        headers=auth_headers,
     )
     assert summarize.status_code == 200
 
@@ -668,7 +681,7 @@ def test_delete_cascades_summaries_after_upload_summarize(client: TestClient, db
     ]
     assert len(sum_ids) >= 1
 
-    response = client.delete(f"/api/v1/documents/{doc_id}")
+    response = client.delete(f"/api/v1/documents/{doc_id}", headers=auth_headers)
     assert response.status_code == 200
 
     db_session.expire_all()
@@ -679,7 +692,7 @@ def test_delete_cascades_summaries_after_upload_summarize(client: TestClient, db
         assert db_session.get(Summary, sid) is None
 
 
-def test_summarize_unknown_document_id_returns_404(client: TestClient):
+def test_summarize_unknown_document_id_returns_404(client: TestClient, auth_headers):
     """Supplying a non-existent document_id must not create a new document."""
     missing_id = str(uuid.uuid4())
     content = b"Enough legal tax text to pass extraction when document_id is missing in DB 2026."
@@ -687,6 +700,7 @@ def test_summarize_unknown_document_id_returns_404(client: TestClient):
         "/api/v1/summarize?provider=extractive",
         files={"file": ("missing_doc.txt", content, "text/plain")},
         data={"document_id": missing_id},
+        headers=auth_headers,
     )
     assert response.status_code == 404
     body = ErrorResponse.model_validate(response.json())

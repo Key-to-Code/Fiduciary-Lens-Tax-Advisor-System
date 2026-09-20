@@ -40,6 +40,7 @@ from sqlalchemy import text
 from backend.app.core.config import settings
 from backend.app.db.session import engine
 from backend.app.schemas.error import ErrorDetail, ErrorResponse
+from backend.app.api.routes import auth as auth_router
 from backend.app.api.routes import health as health_router
 from backend.app.api.routes import documents as documents_router
 from backend.app.api.routes import summarize as summarize_router
@@ -51,8 +52,12 @@ TAGS_METADATA = [
         "description": "Liveness probe and system health verification.",
     },
     {
+        "name": "Authentication",
+        "description": "User registration, login, and JWT access tokens.",
+    },
+    {
         "name": "Documents",
-        "description": "Secure document upload, validation, and text extraction.",
+        "description": "Authenticated document upload, history, and ownership-scoped access.",
     },
     {
         "name": "Summarization",
@@ -125,6 +130,7 @@ def _default_code_for_status(status_code: int) -> str:
         401: "UNAUTHORIZED",
         403: "FORBIDDEN",
         404: "NOT_FOUND",
+        409: "CONFLICT",
         405: "METHOD_NOT_ALLOWED",
         413: "FILE_TOO_LARGE",
         415: "UNSUPPORTED_MEDIA_TYPE",
@@ -219,6 +225,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
 API_PREFIX = "/api/v1"
 
 app.include_router(health_router.router, prefix=API_PREFIX)
+app.include_router(auth_router.router, prefix=API_PREFIX)
 app.include_router(documents_router.router, prefix=API_PREFIX)
 app.include_router(summarize_router.router, prefix=API_PREFIX)
 

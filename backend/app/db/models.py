@@ -1,7 +1,8 @@
 """
-SQLAlchemy database models for documents and summaries.
+SQLAlchemy database models for users, documents, and summaries.
 
 Stage 5: Persistent storage for document metadata and generated legal summaries.
+Stage 6: User accounts and document ownership (documents.user_id → users.id).
 """
 
 from __future__ import annotations
@@ -11,6 +12,7 @@ from datetime import datetime
 from typing import List, Optional
 
 from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, func
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.app.db.session import Base
@@ -18,6 +20,52 @@ from backend.app.db.session import Base
 
 def _generate_uuid() -> str:
     return str(uuid.uuid4())
+
+
+class User(Base):
+    """Registered application user. password_hash is never exposed via API schemas."""
+
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        primary_key=True,
+        default=_generate_uuid,
+        index=True,
+        doc="Unique user identifier (UUID)",
+    )
+    email: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        unique=True,
+        index=True,
+        doc="Unique login email (stored lowercase)",
+    )
+    password_hash: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        doc="bcrypt password hash — never returned in API responses",
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+        doc="Timestamp of account creation",
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+        doc="Timestamp of last update",
+    )
+
+    documents: Mapped[List["Document"]] = relationship(
+        "Document",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
 
 class Document(Base):
@@ -70,6 +118,21 @@ class Document(Base):
         onupdate=func.now(),
         nullable=False,
         doc="Timestamp of last update",
+    )
+    user_id: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+        doc=(
+            "Owning user (users.id). Nullable only to preserve Stage 5 rows that "
+            "predate authentication; new uploads always set this from the JWT user."
+        ),
+    )
+
+    user: Mapped[Optional["User"]] = relationship(
+        "User",
+        back_populates="documents",
     )
 
     # 1-to-many relationship with Summary with full cascade delete

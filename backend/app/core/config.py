@@ -12,6 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import List
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Project root: backend/app/core/ -> backend/app/ -> backend/ -> project root
@@ -50,6 +51,13 @@ class Settings(BaseSettings):
 
     # ── Database (PostgreSQL + SQLAlchemy) — Stage 5 ─────────────────────────
     DATABASE_URL: str = "postgresql+psycopg://localhost:5432/legal_summarizer"
+
+    # ── JWT authentication — Stage 6 ─────────────────────────────────────────
+    # Required: never embed a signing secret in source code. Set this in the
+    # project-root .env or the process environment before starting the server.
+    JWT_SECRET_KEY: str = Field(..., min_length=32)
+    JWT_ALGORITHM: str = "HS256"
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
 
     model_config = SettingsConfigDict(
         # Load from .env at the project root; ignore missing file gracefully.

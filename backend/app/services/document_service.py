@@ -42,6 +42,7 @@ _EXT_TO_MIME: dict[str, str] = {
 _PDF_MAGIC = b"%PDF"
 _PREVIEW_CHARS = 500
 _MIN_TEXT_CHARS = 5
+_MAX_FILENAME_CHARS = 255
 
 
 @dataclass
@@ -54,6 +55,29 @@ class ExtractedDocument:
     mime_type: str
     text: str
     char_count: int
+
+
+def sanitize_display_filename(filename: str | None, *, default: str = "document.txt") -> str:
+    """Return a database-safe display name without accepting a client path.
+
+    UploadFile names may originate from Windows clients, where a backslash is a
+    path separator even on this POSIX host. The name is never used as a storage
+    path, but normalising both separators avoids returning a client path and
+    keeps direct-text summaries consistent with file uploads.
+    """
+    candidate = (filename or "").replace("\\", "/").replace("\x00", "")
+    candidate = Path(candidate).name.strip()
+    if not candidate or candidate in {".", ".."}:
+        candidate = default
+
+    if len(candidate) <= _MAX_FILENAME_CHARS:
+        return candidate
+
+    suffix = Path(candidate).suffix
+    if len(suffix) >= _MAX_FILENAME_CHARS:
+        return candidate[-_MAX_FILENAME_CHARS:]
+    stem_limit = _MAX_FILENAME_CHARS - len(suffix)
+    return f"{Path(candidate).stem[:stem_limit]}{suffix}"
 
 
 async def extract_document_text(upload: UploadFile) -> ExtractedDocument:
@@ -81,8 +105,7 @@ async def extract_document_text(upload: UploadFile) -> ExtractedDocument:
         When the file size exceeds the configured maximum limit.
     """
     # ── 1. Validate file extension ──────────────────────────────────────────
-    original_name = upload.filename or "document"
-    safe_display_name = Path(original_name).name or "document"
+    safe_display_name = sanitize_display_filename(upload.filename)
     extension = Path(safe_display_name).suffix.lower()
 
     if extension not in _ALLOWED_EXTENSIONS:

@@ -7,7 +7,7 @@ and database models.
 
 from __future__ import annotations
 
-from backend.app.db.models import Document, Summary
+from backend.app.db.models import Document, Summary, User
 from backend.app.db.session import Base, SessionLocal, engine, get_db
 
 __all__ = [
@@ -17,4 +17,5 @@ __all__ = [
     "get_db",
     "Document",
     "Summary",
+    "User",
 ]
