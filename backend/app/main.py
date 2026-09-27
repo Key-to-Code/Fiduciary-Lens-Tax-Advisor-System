@@ -44,6 +44,7 @@ from backend.app.api.routes import auth as auth_router
 from backend.app.api.routes import health as health_router
 from backend.app.api.routes import documents as documents_router
 from backend.app.api.routes import summarize as summarize_router
+from backend.app.api.routes import ask as ask_router
 
 # ── OpenAPI Tags Metadata ───────────────────────────────────────────────────
 TAGS_METADATA = [
@@ -228,6 +229,7 @@ app.include_router(health_router.router, prefix=API_PREFIX)
 app.include_router(auth_router.router, prefix=API_PREFIX)
 app.include_router(documents_router.router, prefix=API_PREFIX)
 app.include_router(summarize_router.router, prefix=API_PREFIX)
+app.include_router(ask_router.router, prefix=API_PREFIX)
 
 
 # ── Convenience redirect ──────────────────────────────────────────────────────

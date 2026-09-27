@@ -25,6 +25,9 @@ engine = create_engine(
     settings.DATABASE_URL,
     pool_pre_ping=True,
     echo=False,
+    # Keep the optional startup database probe from blocking the API when
+    # PostgreSQL is stopped or unreachable. RAG and health routes are DB-free.
+    connect_args={"connect_timeout": 3},
 )
 
 # Session factory for generating discrete transactional database sessions

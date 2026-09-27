@@ -91,7 +91,11 @@ def summarize_legal_document(
 # RAG Q&A (wraps TaxQA from rag_model)
 # ---------------------------------------------------------------------------
 
-def ask_tax_question(question: str, provider: str | None = None) -> dict[str, Any]:
+def ask_tax_question(
+    question: str,
+    provider: str | None = None,
+    history: list[tuple[str, str]] | None = None,
+) -> dict[str, Any]:
     """
     Ask a single tax question against the Income-tax Act 2025 knowledge base.
 
@@ -110,16 +114,21 @@ def ask_tax_question(question: str, provider: str | None = None) -> dict[str, An
 
     try:
         qa = TaxQA(provider=provider)
-        answer = qa.ask(question)
+        answer = qa.ask(question, history=history)
     except Exception as exc:
         raise ProviderError(
             "RAG pipeline failure",
             f"Failed to query knowledge base: {type(exc).__name__}: {str(exc)}",
         ) from exc
 
+    sources = answer.sources
+    for source, hit in zip(sources, answer.hits):
+        source["excerpt"] = hit.chunk.content[:900]
+        source["url"] = hit.chunk.metadata.get("url")
+
     return {
         "answer": answer.text,
-        "sources": answer.sources,
+        "sources": sources,
         "grounded": answer.grounded,
         "provider": answer.provider,
         "latency_ms": answer.latency_ms,

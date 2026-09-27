@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#fbfbfa" />
+    <title>Fiduciary Lens — Tax Advisor</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Spectral:ital,wght@0,400;0,600;1,400;1,600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <header class="app-header">
+      <a class="brand" href="/" aria-label="Fiduciary Lens home">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M4 8l8-5 8 5" /></svg>
+        </span>
+        <span class="brand-copy">
+          <span class="brand-name">Fiduciary Lens</span>
+          <span class="brand-tagline">Indian tax law, explained with care.</span>
+        </span>
+      </a>
+      <div class="header-tools">
+        <div class="knowledge-status" id="knowledgeStatus" role="status" aria-live="polite">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span class="status-label">Checking knowledge base…</span>
+        </div>
+        <button class="sources-toggle" id="sourcesToggle" type="button" aria-label="Open sources panel" aria-expanded="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
+          <span>Sources</span>
+        </button>
+      </div>
+    </header>
+
+    <main class="app-shell">
+      <section class="chat-column" aria-label="Tax law conversation">
+        <div class="transcript" id="transcript" aria-live="polite">
+          <section class="welcome" id="welcome">
+            <p class="eyebrow"><span class="eyebrow-line"></span> A clearer view of the law</p>
+            <h1>Plain answers to Indian tax questions, <em>each one tied to the law.</em></h1>
+            <p class="welcome-copy">No jargon, no guessing. When the indexed provisions don’t support an answer, we’ll say so and point you toward a Chartered Accountant.</p>
+          </section>
+
+          <section class="quick-section" id="quickSection" aria-labelledby="quickHeading">
+            <h2 class="section-kicker" id="quickHeading">A few places to start</h2>
+            <div class="quick-grid" id="quickGrid">
+              <button class="quick-action" type="button" data-question="What can I claim under Section 80C this year?">
+                <span class="quick-icon" aria-hidden="true">§</span><span class="quick-copy"><strong>Section 80C deductions</strong><span>Eligible investments and the combined limit</span></span>
+              </button>
+              <button class="quick-action" type="button" data-question="What are the health insurance deduction limits under Section 80D?">
+                <span class="quick-icon" aria-hidden="true">§</span><span class="quick-copy"><strong>Section 80D limits</strong><span>Health insurance premiums for family and parents</span></span>
+              </button>
+              <button class="quick-action" type="button" data-question="Explain the income tax slab rates under the new and old regimes.">
+                <span class="quick-icon" aria-hidden="true">§</span><span class="quick-copy"><strong>Slab rates</strong><span>New regime and old regime provisions</span></span>
+              </button>
+              <button class="quick-action" type="button" data-question="How do I file my income tax return and what is the due date?">
+                <span class="quick-icon" aria-hidden="true">§</span><span class="quick-copy"><strong>Filing an ITR</strong><span>Return forms, process and due dates</span></span>
+              </button>
+              <button class="quick-action" type="button" data-question="How are capital gains from selling shares taxed?">
+                <span class="quick-icon" aria-hidden="true">§</span><span class="quick-copy"><strong>Capital gains</strong><span>Provisions for gains from selling shares</span></span>
+              </button>
+              <button class="quick-action" type="button" data-question="What tax rules apply to freelancers and consultants?">
+                <span class="quick-icon" aria-hidden="true">§</span><span class="quick-copy"><strong>Freelancer taxes</strong><span>Presumptive taxation and advance tax rules</span></span>
+              </button>
+            </div>
+          </section>
+          <div class="conversation" id="conversation" aria-label="Messages"></div>
+          <div class="scroll-anchor" id="scrollAnchor" aria-hidden="true"></div>
+        </div>
+
+        <form class="composer" id="composer">
+          <div class="composer-box">
+            <label class="sr-only" for="questionInput">Your tax law question</label>
+            <textarea id="questionInput" rows="1" maxlength="4000" placeholder="Ask about deductions, filing, capital gains…" autocomplete="off"></textarea>
+            <button class="send-button" id="sendButton" type="submit" aria-label="Send question" disabled>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m4 12 16-8-6 16-3.2-6.8L4 12Z" /><path d="m10.8 13.2 4-4" /></svg>
+            </button>
+          </div>
+          <p class="composer-hint">Enter to send <span aria-hidden="true">·</span> Shift + Enter for a new line</p>
+        </form>
+      </section>
+
+      <div class="mobile-scrim" id="mobileScrim" hidden></div>
+      <aside class="sources-panel" id="sourcesPanel" aria-label="Retrieved sources">
+        <div class="sources-heading">
+          <div>
+            <p class="eyebrow sources-eyebrow">Grounding</p>
+            <h2>Sources <span class="source-count" id="sourceCount"></span></h2>
+          </div>
+          <div class="sources-heading-actions">
+            <span class="verified-label"><span aria-hidden="true">✓</span> from the law</span>
+            <button class="drawer-close" type="button" id="drawerClose" aria-label="Close sources panel">×</button>
+          </div>
+        </div>
+        <div class="sources-content" id="sourcesContent">
+          <div class="sources-empty">
+            <span class="empty-mark" aria-hidden="true">§</span>
+            <p>Sources will appear here with your answer.</p>
+            <span>Every citation comes from a retrieved passage.</span>
+          </div>
+        </div>
+        <div class="sources-footer">Sources are retrieved from the indexed tax-law corpus.</div>
+      </aside>
+    </main>
+
+    <footer class="disclaimer">
+      <strong>For education only.</strong> This is not professional tax, accounting, or financial advice. For decisions about your own situation, consult a Chartered Accountant.
+    </footer>
+    <div class="sr-only" id="announcer" role="status" aria-live="assertive"></div>
+  </body>
+</html>

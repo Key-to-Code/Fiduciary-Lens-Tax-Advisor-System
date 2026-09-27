@@ -39,6 +39,47 @@ If you just want to ask general tax questions against the law base:
 python rag_model/scripts/ask.py "What deductions are allowed for life insurance premium?"
 ```
 
+## Run the chat application
+
+The browser chat lives in `frontend/` and calls the public RAG endpoints at
+`http://localhost:8000/api/v1`. It uses the existing `TaxQA` retrieval and
+generation path. No frontend package manager or API secret is needed when the
+provider is set to `extractive`.
+
+1. Install both the RAG and API dependencies from the project root:
+
+   ```powershell
+   python -m pip install -r requirements.txt -r backend/requirements.txt
+   ```
+
+2. Copy `.env.example` to `.env`. For a no-key local chat, set
+   `LLM_PROVIDER=extractive`. Set a private `JWT_SECRET_KEY` for local API use.
+3. Build the retrieval index if `index/manifest.json` is missing:
+
+   ```powershell
+   python rag_model/scripts/build_index.py
+   ```
+
+4. Start the API in one terminal:
+
+   ```powershell
+   uvicorn backend.app.main:app --reload --host 127.0.0.1 --port 8000
+   ```
+
+5. Start the static frontend in another terminal:
+
+   ```powershell
+   python -m http.server 3000 --directory frontend
+   ```
+
+   Open [http://localhost:3000](http://localhost:3000). Configure
+   `window.FIDUCIARY_API_BASE` before `app.js` if the API runs at another URL.
+
+The chat endpoint and knowledge status endpoint do not require PostgreSQL.
+Authentication, document history, and persisted summaries do: configure
+`DATABASE_URL`, start PostgreSQL, and run `alembic upgrade head` before using
+those routes.
+
 ---
 
 ## Directory Structure
