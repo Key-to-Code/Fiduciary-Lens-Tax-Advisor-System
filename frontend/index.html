@@ -8,10 +8,25 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Spectral:ital,wght@0,400;0,600;1,400;1,600&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css" />
-    <script src="app.js" defer></script>
+    <link rel="stylesheet" href="styles.css?v=20261003-splash" />
+    <script src="app.js?v=20261003-splash" defer></script>
   </head>
-  <body>
+  <body aria-busy="true">
+    <div class="splash-screen" id="splashScreen" role="status" aria-live="polite" aria-label="Preparing Fiduciary Lens">
+      <div class="splash-content">
+        <span class="splash-orbit splash-orbit-one" aria-hidden="true"></span>
+        <span class="splash-orbit splash-orbit-two" aria-hidden="true"></span>
+        <span class="splash-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M4 8l8-5 8 5" /><path d="M4 8l-2 5h4L4 8Zm16 0-2 5h4l-2-5ZM9 21h6" /></svg>
+        </span>
+        <p class="splash-brand">Fiduciary Lens</p>
+        <h1>A clearer view of <em>Indian tax law.</em></h1>
+        <p class="splash-tagline">Indian tax law, explained with care.</p>
+        <div class="splash-progress" aria-hidden="true"><span></span></div>
+        <p class="splash-status"><span class="splash-status-dot" aria-hidden="true"></span>Preparing your workspace</p>
+      </div>
+      <p class="splash-footnote">Grounded in the law. Written for clarity.</p>
+    </div>
     <header class="app-header">
       <a class="brand" href="/" aria-label="Fiduciary Lens home">
         <span class="brand-mark" aria-hidden="true">
@@ -35,12 +50,12 @@
     </header>
 
     <main class="app-shell">
-      <section class="chat-column" aria-label="Tax law conversation">
+      <section class="chat-column is-home" aria-label="Tax law conversation">
         <div class="transcript" id="transcript" aria-live="polite">
           <section class="welcome" id="welcome">
             <p class="eyebrow"><span class="eyebrow-line"></span> A clearer view of the law</p>
-            <h1>Plain answers to Indian tax questions, <em>each one tied to the law.</em></h1>
-            <p class="welcome-copy">No jargon, no guessing. When the indexed provisions don’t support an answer, we’ll say so and point you toward a Chartered Accountant.</p>
+            <h1>A clearer view of <em>Indian tax law.</em></h1>
+            <p class="welcome-copy">Ask a question to find relevant provisions and receive an answer grounded in the law.</p>
           </section>
 
           <section class="quick-section" id="quickSection" aria-labelledby="quickHeading">
@@ -83,7 +98,7 @@
       </section>
 
       <div class="mobile-scrim" id="mobileScrim" hidden></div>
-      <aside class="sources-panel" id="sourcesPanel" aria-label="Retrieved sources">
+      <aside class="sources-panel" id="sourcesPanel" aria-label="Retrieved sources" tabindex="-1" hidden>
         <div class="sources-heading">
           <div>
             <p class="eyebrow sources-eyebrow">Grounding</p>

@@ -1,5 +1,7 @@
 const API_BASE = (window.FIDUCIARY_API_BASE || "http://localhost:8000/api/v1").replace(/\/$/, "");
 
+const splashScreen = document.querySelector("#splashScreen");
+const splashStartedAt = performance.now();
 const transcript = document.querySelector("#transcript");
 const conversation = document.querySelector("#conversation");
 const input = document.querySelector("#questionInput");
@@ -10,6 +12,8 @@ const welcome = document.querySelector("#welcome");
 const statusPill = document.querySelector("#knowledgeStatus");
 const statusLabel = statusPill.querySelector(".status-label");
 const sourcesPanel = document.querySelector("#sourcesPanel");
+const appShell = document.querySelector(".app-shell");
+const chatColumn = document.querySelector(".chat-column");
 const sourcesContent = document.querySelector("#sourcesContent");
 const sourceCount = document.querySelector("#sourceCount");
 const sourcesToggle = document.querySelector("#sourcesToggle");
@@ -35,8 +39,13 @@ function setKnowledgeStatus(state, label) {
 }
 
 async function loadKnowledgeStatus() {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 4500);
   try {
-    const response = await fetch(`${API_BASE}/knowledge`, { headers: { Accept: "application/json" } });
+    const response = await fetch(`${API_BASE}/knowledge`, {
+      headers: { Accept: "application/json" },
+      signal: controller.signal,
+    });
     if (!response.ok) throw new Error(`Knowledge status returned ${response.status}`);
     const data = await response.json();
     if (!data.available) {
@@ -48,7 +57,21 @@ async function loadKnowledgeStatus() {
     setKnowledgeStatus("ready", `KB ready · ${Number(data.n_chunks || 0).toLocaleString()} passages${title ? ` · ${title}` : ""}`);
   } catch {
     setKnowledgeStatus("offline", "Knowledge base status unavailable");
+  } finally {
+    window.clearTimeout(timeoutId);
   }
+}
+
+function dismissSplash() {
+  const minimumVisibleMs = 760;
+  const remaining = Math.max(0, minimumVisibleMs - (performance.now() - splashStartedAt));
+  window.setTimeout(() => {
+    splashScreen.classList.add("is-leaving");
+    window.setTimeout(() => {
+      splashScreen.hidden = true;
+      document.body.setAttribute("aria-busy", "false");
+    }, 440);
+  }, remaining);
 }
 
 function scrollToLatest() {
@@ -65,7 +88,7 @@ function setBusy(value) {
   sendButton.setAttribute("aria-label", value ? "Sending question" : "Send question");
 }
 
-function createTurn(role, message, { grounded = true, sources = [], error = false, latency = null, onRetry = null } = {}) {
+function createTurn(role, message, { grounded = true, sources = [], error = false, latency = null, provider = null, onRetry = null } = {}) {
   const turn = element("article", `turn ${role}${grounded ? "" : " ungrounded"}${error ? " error" : ""}`);
   turn.dataset.role = role;
   const bubble = element("div", "bubble");
@@ -98,8 +121,10 @@ function createTurn(role, message, { grounded = true, sources = [], error = fals
 
   turn.append(bubble);
   if (role === "assistant") {
+    const providerNames = { openai: "OpenAI", openrouter: "OpenRouter", ollama: "Ollama", local: "Local model", extractive: "Extractive" };
+    const providerLabel = provider ? ` · ${providerNames[provider] || provider}` : "";
     const metaText = error ? "Connection issue" : grounded
-      ? `Grounded · ${sources.length} ${sources.length === 1 ? "source" : "sources"}${latency !== null ? ` · ${latency} ms` : ""}`
+      ? `Grounded · ${sources.length} ${sources.length === 1 ? "source" : "sources"}${providerLabel}${latency !== null ? ` · ${latency} ms` : ""}`
       : "Not sufficiently grounded";
     turn.append(element("div", "turn-meta", metaText));
     if (onRetry) {
@@ -199,15 +224,17 @@ function renderSources(sources) {
 }
 
 function focusSource(index) {
-  const card = document.querySelector(`#source-${index}`);
-  if (!card) return;
-  sourcesContent.querySelectorAll(".source-card").forEach((node) => node.classList.remove("is-active"));
-  card.classList.add("is-active");
-  card.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  conversation.querySelectorAll(".citation-chip").forEach((chip) => {
-    chip.classList.toggle("is-active", Number(chip.dataset.sourceIndex) === index);
+  openSources();
+  requestAnimationFrame(() => {
+    const card = document.querySelector(`#source-${index}`);
+    if (!card) return;
+    sourcesContent.querySelectorAll(".source-card").forEach((node) => node.classList.remove("is-active"));
+    card.classList.add("is-active");
+    card.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    conversation.querySelectorAll(".citation-chip").forEach((chip) => {
+      chip.classList.toggle("is-active", Number(chip.dataset.sourceIndex) === index);
+    });
   });
-  if (window.matchMedia("(max-width: 850px)").matches) openSources();
 }
 
 function showThinking() {
@@ -235,6 +262,8 @@ async function ask(question, { retry = false } = {}) {
   const cleaned = question.trim();
   if (!cleaned || pending) return;
   if (!retry) {
+    document.body.classList.add("has-conversation");
+    chatColumn.classList.remove("is-home");
     welcome.hidden = true;
     quickSection.hidden = true;
     createTurn("user", cleaned);
@@ -262,6 +291,7 @@ async function ask(question, { retry = false } = {}) {
     createTurn("assistant", data.answer, {
       grounded,
       sources: grounded ? sources : [],
+      provider: typeof data.provider === "string" ? data.provider : null,
       latency: Number.isFinite(data.latency_ms) ? data.latency_ms : null,
     });
     renderSources(grounded ? sources : []);
@@ -295,17 +325,30 @@ function resizeInput() {
 }
 
 function openSources() {
+  if (!document.body.classList.contains("has-conversation")) return;
+  sourcesPanel.hidden = false;
   sourcesPanel.classList.add("is-open");
+  appShell.classList.add("sources-open");
   mobileScrim.hidden = false;
   sourcesToggle.setAttribute("aria-expanded", "true");
-  drawerClose.focus({ preventScroll: true });
+  sourcesToggle.setAttribute("aria-label", "Close sources panel");
+  if (window.matchMedia("(max-width: 850px)").matches) {
+    drawerClose.focus({ preventScroll: true });
+  } else {
+    sourcesPanel.focus({ preventScroll: true });
+  }
 }
 
-function closeSources() {
+function closeSources({ returnFocus = true } = {}) {
   sourcesPanel.classList.remove("is-open");
+  sourcesPanel.hidden = true;
+  appShell.classList.remove("sources-open");
   mobileScrim.hidden = true;
   sourcesToggle.setAttribute("aria-expanded", "false");
-  sourcesToggle.focus({ preventScroll: true });
+  sourcesToggle.setAttribute("aria-label", "Open sources panel");
+  if (returnFocus && document.body.classList.contains("has-conversation")) {
+    sourcesToggle.focus({ preventScroll: true });
+  }
 }
 
 composer.addEventListener("submit", (event) => {
@@ -322,11 +365,14 @@ input.addEventListener("keydown", (event) => {
 document.querySelectorAll(".quick-action").forEach((button) => {
   button.addEventListener("click", () => ask(button.dataset.question || ""));
 });
-sourcesToggle.addEventListener("click", openSources);
+sourcesToggle.addEventListener("click", () => {
+  if (sourcesPanel.hidden) openSources();
+  else closeSources();
+});
 drawerClose.addEventListener("click", closeSources);
 mobileScrim.addEventListener("click", closeSources);
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && sourcesPanel.classList.contains("is-open")) closeSources();
 });
 
-loadKnowledgeStatus();
+loadKnowledgeStatus().finally(dismissSplash);

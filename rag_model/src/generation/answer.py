@@ -77,18 +77,29 @@ class TaxQA:
 
         system, user = prompt.build_messages(question, hits, history)
         collected: list[str] = []
+        used_provider = self.provider.name
         try:
             for piece in self.provider.generate(system, user):
                 collected.append(piece)
                 yield piece
-        except Exception as exc:
-            note = (f"\n\n_[{self.provider.name} backend failed: {type(exc).__name__}: {exc}]_\n\n")
-            collected.append(note)
-            yield note
-            if not any(piece.strip() for piece in collected[:-1]):
-                for piece in ExtractiveProvider().generate(system, user):
-                    collected.append(piece)
-                    yield piece
+        except Exception:
+            # Never return vendor diagnostics or credentials-related details to
+            # the chat. If generation fails, replace any partial output with an
+            # explicitly labeled extractive response and report its real source.
+            collected.clear()
+            used_provider = "extractive"
+            for piece in ExtractiveProvider().generate(system, user):
+                collected.append(piece)
+                yield piece
+
+        if not any(piece.strip() for piece in collected):
+            # Some reasoning routes can finish successfully without emitting
+            # user-visible text. Treat that as a failed generation, not an
+            # empty model answer.
+            used_provider = "extractive"
+            for piece in ExtractiveProvider().generate(system, user):
+                collected.append(piece)
+                yield piece
 
         tail = "\n\n" + prompt.DISCLAIMER
         yield tail
@@ -97,7 +108,7 @@ class TaxQA:
             text="".join(collected) + tail,
             hits=hits,
             grounded=True,
-            provider=self.provider.name,
+            provider=used_provider,
             latency_ms=int((time.perf_counter() - started) * 1000),
         )
 

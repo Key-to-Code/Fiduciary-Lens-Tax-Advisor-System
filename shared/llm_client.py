@@ -164,6 +164,8 @@ class OpenAIProvider(Provider):
 
     def __init__(self, model: str | None = None):
         self.model = model or config.OPENAI_MODEL
+        base_url = os.getenv("OPENAI_BASE_URL", "").lower()
+        self.name = "openrouter" if "openrouter.ai" in base_url else "openai"
         self._client = None
 
     @staticmethod
@@ -185,13 +187,20 @@ class OpenAIProvider(Provider):
         return self._client
 
     def generate(self, system: str, user: str) -> Iterator[str]:
+        request = {
+            "model": self.model,
+            "messages": [{"role": "system", "content": system},
+                         {"role": "user", "content": user}],
+            "temperature": config.TEMPERATURE,
+            "max_tokens": config.MAX_TOKENS,
+            "stream": True,
+        }
+        if self.name == "openrouter":
+            # Keep hidden reasoning bounded so the free Qwen route leaves room
+            # for a visible answer within MAX_TOKENS.
+            request["extra_body"] = {"reasoning": {"effort": "low"}}
         stream = self.client().chat.completions.create(
-            model=self.model,
-            messages=[{"role": "system", "content": system},
-                      {"role": "user", "content": user}],
-            temperature=config.TEMPERATURE,
-            max_tokens=config.MAX_TOKENS,
-            stream=True,
+            **request,
         )
         for event in stream:
             if event.choices and event.choices[0].delta.content:
@@ -212,7 +221,7 @@ class ExtractiveProvider(Provider):
         body = user.split(marker, 1)[-1]
         body = body.split("QUESTION:", 1)[0].strip().lstrip("-").strip()
         yield (
-            "No language model is configured, so I cannot summarise. "
+            "A generated summary is unavailable for this response. "
             "Here are the provisions retrieved for your question, quoted verbatim "
             "from the knowledge base:\n\n" + body
         )
