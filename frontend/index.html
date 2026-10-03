@@ -8,8 +8,8 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Spectral:ital,wght@0,400;0,600;1,400;1,600&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=20261003-splash" />
-    <script src="app.js?v=20261003-splash" defer></script>
+    <link rel="stylesheet" href="styles.css?v=20261003-navigation" />
+    <script src="app.js?v=20261003-navigation" defer></script>
   </head>
   <body aria-busy="true">
     <div class="splash-screen" id="splashScreen" role="status" aria-live="polite" aria-label="Preparing Fiduciary Lens">
@@ -38,10 +38,16 @@
         </span>
       </a>
       <div class="header-tools">
-        <div class="knowledge-status" id="knowledgeStatus" role="status" aria-live="polite">
-          <span class="status-dot" aria-hidden="true"></span>
-          <span class="status-label">Checking knowledge base…</span>
-        </div>
+        <nav class="header-nav" aria-label="Future navigation">
+          <button class="nav-placeholder nav-about" type="button" title="Coming soon" aria-label="About, coming soon" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 11v5m0-8h.01" /></svg>
+            <span>About</span>
+          </button>
+          <button class="nav-placeholder nav-profile" type="button" title="Coming soon" aria-label="Profile, coming soon" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></svg>
+            <span>Profile</span>
+          </button>
+        </nav>
         <button class="sources-toggle" id="sourcesToggle" type="button" aria-label="Open sources panel" aria-expanded="false">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
           <span>Sources</span>

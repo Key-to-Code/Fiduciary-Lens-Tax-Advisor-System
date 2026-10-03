@@ -9,8 +9,6 @@ const composer = document.querySelector("#composer");
 const sendButton = document.querySelector("#sendButton");
 const quickSection = document.querySelector("#quickSection");
 const welcome = document.querySelector("#welcome");
-const statusPill = document.querySelector("#knowledgeStatus");
-const statusLabel = statusPill.querySelector(".status-label");
 const sourcesPanel = document.querySelector("#sourcesPanel");
 const appShell = document.querySelector(".app-shell");
 const chatColumn = document.querySelector(".chat-column");
@@ -32,13 +30,7 @@ function element(tag, className, text) {
   return node;
 }
 
-function setKnowledgeStatus(state, label) {
-  statusPill.dataset.state = state;
-  statusLabel.textContent = label;
-  statusPill.title = label;
-}
-
-async function loadKnowledgeStatus() {
+async function checkKnowledgeBase() {
   const controller = new AbortController();
   const timeoutId = window.setTimeout(() => controller.abort(), 4500);
   try {
@@ -47,16 +39,9 @@ async function loadKnowledgeStatus() {
       signal: controller.signal,
     });
     if (!response.ok) throw new Error(`Knowledge status returned ${response.status}`);
-    const data = await response.json();
-    if (!data.available) {
-      setKnowledgeStatus("offline", data.label || "Knowledge base unavailable");
-      return;
-    }
-    const docs = Array.isArray(data.documents) ? data.documents : [];
-    const title = docs.slice(0, 2).map((name) => name.replace(/\.pdf$/i, "").replaceAll("-", " ")).join(" · ");
-    setKnowledgeStatus("ready", `KB ready · ${Number(data.n_chunks || 0).toLocaleString()} passages${title ? ` · ${title}` : ""}`);
+    await response.json();
   } catch {
-    setKnowledgeStatus("offline", "Knowledge base status unavailable");
+    // The splash still closes when the knowledge API is unavailable.
   } finally {
     window.clearTimeout(timeoutId);
   }
@@ -375,4 +360,4 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && sourcesPanel.classList.contains("is-open")) closeSources();
 });
 
-loadKnowledgeStatus().finally(dismissSplash);
+checkKnowledgeBase().finally(dismissSplash);
