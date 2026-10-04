@@ -8,8 +8,8 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Spectral:ital,wght@0,400;0,600;1,400;1,600&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=20261003-navigation" />
-    <script src="app.js?v=20261003-navigation" defer></script>
+    <link rel="stylesheet" href="styles.css?v=20261004-documents" />
+    <script src="app.js?v=20261004-documents" defer></script>
   </head>
   <body aria-busy="true">
     <div class="splash-screen" id="splashScreen" role="status" aria-live="polite" aria-label="Preparing Fiduciary Lens">
@@ -38,7 +38,11 @@
         </span>
       </a>
       <div class="header-tools">
-        <nav class="header-nav" aria-label="Future navigation">
+        <nav class="header-nav" aria-label="Main navigation">
+          <button class="nav-placeholder nav-documents" id="documentsNav" type="button" aria-current="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13H7z" /><path d="M14 3v6h5M10 13h6m-6 4h6" /></svg>
+            <span>Documents</span>
+          </button>
           <button class="nav-placeholder nav-about" type="button" title="Coming soon" aria-label="About, coming soon" disabled>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 11v5m0-8h.01" /></svg>
             <span>About</span>
@@ -101,6 +105,58 @@
           </div>
           <p class="composer-hint">Enter to send <span aria-hidden="true">·</span> Shift + Enter for a new line</p>
         </form>
+      </section>
+
+      <section class="document-workspace" id="documentsView" aria-labelledby="documentsHeading" hidden>
+        <div class="document-intro">
+          <p class="eyebrow"><span class="eyebrow-line"></span> Document understanding</p>
+          <h1 id="documentsHeading">A clearer view of <em>your document.</em></h1>
+          <p>Upload a tax document to extract its text, prepare a concise summary, identify financial details, and retrieve relevant provisions from the tax-law corpus.</p>
+        </div>
+
+        <section class="account-card" id="documentAuthPanel" aria-labelledby="accountHeading">
+          <div class="document-card-heading">
+            <div><p class="eyebrow">Private workspace</p><h2 id="accountHeading">Sign in to analyze a document</h2></div>
+            <span class="private-mark" aria-hidden="true">●</span>
+          </div>
+          <p class="document-card-copy">Your files and summaries are associated with your account. The application keeps uploaded file contents in temporary storage only. Account access and saved summaries require PostgreSQL to be running with the project migrations applied.</p>
+          <form class="auth-form" id="documentAuthForm">
+            <label>Email address<input id="documentEmail" type="email" autocomplete="email" maxlength="255" required /></label>
+            <label>Password<input id="documentPassword" type="password" autocomplete="current-password" minlength="8" maxlength="72" required /></label>
+            <div class="auth-actions"><button class="primary-button" id="authSubmit" type="submit">Sign in</button><button class="text-button" id="authModeToggle" type="button">Create account</button></div>
+            <p class="form-message" id="authMessage" role="status" aria-live="polite"></p>
+          </form>
+        </section>
+
+        <section class="document-card upload-card" id="documentUploadPanel" aria-labelledby="uploadHeading" hidden>
+          <div class="document-card-heading">
+            <div><p class="eyebrow">Secure upload</p><h2 id="uploadHeading">Choose a document to analyze</h2></div>
+            <button class="text-button sign-out-button" id="signOutButton" type="button">Sign out</button>
+          </div>
+          <p class="document-card-copy">The existing NLP pipeline extracts text, summarizes it, identifies entities, and queries the tax-law RAG system for detected deduction sections. PDF, TXT, MD, or CSV · up to 20 MB.</p>
+          <form class="upload-form" id="documentUploadForm">
+            <label class="drop-zone" id="documentDropZone" for="documentFile">
+              <span class="upload-mark" aria-hidden="true">↑</span>
+              <strong id="selectedFileName">Select a tax document</strong>
+              <span id="selectedFileHint">Choose a file or drop it here</span>
+              <input id="documentFile" type="file" accept=".pdf,.txt,.md,.csv,application/pdf,text/plain,text/markdown,text/csv" required />
+            </label>
+            <button class="primary-button analyze-button" id="analyzeButton" type="submit" disabled>Analyze document</button>
+            <p class="form-message" id="uploadMessage" role="status" aria-live="polite"></p>
+          </form>
+        </section>
+
+        <section class="analysis-results" id="analysisResults" aria-live="polite" hidden>
+          <div class="analysis-summary document-card">
+            <div class="document-card-heading"><div><p class="eyebrow">Document summary</p><h2 id="resultFilename"></h2></div><span class="analysis-duration" id="analysisDuration"></span></div>
+            <p class="analysis-summary-text" id="analysisSummary"></p>
+          </div>
+          <div class="analysis-columns">
+            <section class="document-card result-card" aria-labelledby="entitiesHeading"><p class="eyebrow">Extracted from document</p><h2 id="entitiesHeading">Key details</h2><div class="entity-list" id="entityList"></div></section>
+            <section class="document-card result-card" aria-labelledby="insightsHeading"><p class="eyebrow">Retrieved from tax law</p><h2 id="insightsHeading">Related provisions</h2><div class="insight-list" id="insightList"></div></section>
+          </div>
+          <p class="analysis-footnote">Summaries and extracted entities describe the uploaded document. Tax insights come from the indexed law corpus and may be marked insufficiently grounded when retrieved provisions do not support an answer.</p>
+        </section>
       </section>
 
       <div class="mobile-scrim" id="mobileScrim" hidden></div>

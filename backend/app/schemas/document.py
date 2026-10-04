@@ -192,6 +192,23 @@ class DocumentListResponse(BaseModel):
     }
 
 
+class DocumentAnalysisResponse(BaseModel):
+    """Summary and tax-law insights generated from an uploaded document."""
+
+    success: bool = True
+    document_id: str
+    filename: str
+    file_size_bytes: int
+    char_count: int
+    summary: str
+    entities: dict
+    tax_insights: dict[str, str]
+    tax_insight_sources: dict[str, list[dict]]
+    tax_insight_grounding: dict[str, bool]
+    processing_time: float
+    provider: Optional[str] = None
+
+
 class DocumentDeleteResponse(BaseModel):
     """Response returned upon successful document deletion."""
 
@@ -218,6 +235,7 @@ __all__ = [
     "DocumentResponse",
     "DocumentDetailResponse",
     "DocumentListResponse",
+    "DocumentAnalysisResponse",
     "DocumentDeleteResponse",
     "SummaryItemResponse",
     "ErrorDetail",

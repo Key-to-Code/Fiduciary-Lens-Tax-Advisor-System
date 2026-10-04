@@ -10,6 +10,9 @@ Endpoints:
 
 from __future__ import annotations
 
+import time
+import uuid
+
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy import desc, func, select
 from sqlalchemy.exc import SQLAlchemyError
@@ -17,10 +20,11 @@ from sqlalchemy.orm import Session, selectinload
 
 from backend.app.api.deps import get_current_user
 from backend.app.core.config import settings
-from backend.app.db.models import Document, User
+from backend.app.db.models import Document, Summary, User
 from backend.app.db.session import get_db
 from backend.app.schemas.document import (
     DocumentDeleteResponse,
+    DocumentAnalysisResponse,
     DocumentDetailResponse,
     DocumentListResponse,
     DocumentResponse,
@@ -29,6 +33,7 @@ from backend.app.schemas.document import (
 )
 from backend.app.schemas.error import ErrorResponse
 from backend.app.services.document_service import extract_document_text, _PREVIEW_CHARS
+from backend.app.services.rag_service import ProviderError, analyse_document_text
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
 
@@ -187,6 +192,123 @@ async def upload_document(
         char_count=doc.char_count,
         preview=preview,
         message="Document uploaded and text extracted successfully",
+    )
+
+
+@router.post(
+    "/analyze",
+    response_model=DocumentAnalysisResponse,
+    summary="Analyze an uploaded tax document",
+    description=(
+        "Run the existing document NLP pipeline on an uploaded PDF, TXT, MD, or CSV: "
+        "text extraction, summary, financial entity extraction, and tax-law RAG insights "
+        "for detected deduction sections. The document metadata and summary are saved "
+        "to the authenticated user's account. Requires a Bearer JWT."
+    ),
+    responses={
+        400: {"model": ErrorResponse, "description": "Unsupported or invalid upload"},
+        401: {"model": ErrorResponse, "description": "Missing or invalid JWT"},
+        413: {"model": ErrorResponse, "description": "File exceeds configured upload limit"},
+        422: {"model": ErrorResponse, "description": "Document could not be parsed"},
+        502: {"model": ErrorResponse, "description": "Configured model or RAG provider failed"},
+        500: {"model": ErrorResponse, "description": "Analysis or persistence failed"},
+    },
+)
+async def analyze_document_endpoint(
+    file: UploadFile = File(..., description="Tax document (.pdf, .txt, .md, .csv)"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> DocumentAnalysisResponse:
+    """Expose the existing NLP + tax-law RAG orchestrator to the web application."""
+    try:
+        extracted = await extract_document_text(file)
+    except (ValueError, RuntimeError) as exc:
+        title, detail = (exc.args[0], exc.args[1]) if len(exc.args) >= 2 else (str(exc), None)
+        title_lower = str(title).lower()
+        if "too large" in title_lower:
+            status_code, code = 413, "FILE_TOO_LARGE"
+        elif "unavailable" in title_lower:
+            status_code, code = 503, "DEPENDENCY_ERROR"
+        elif "unsupported" in title_lower:
+            status_code, code = 400, "UNSUPPORTED_FILE_TYPE"
+        elif any(word in title_lower for word in ("empty", "invalid pdf")):
+            status_code, code = 400, "INVALID_DOCUMENT"
+        else:
+            status_code, code = 422, "DOCUMENT_PROCESSING_ERROR"
+        raise HTTPException(
+            status_code=status_code,
+            detail={"code": code, "message": title, "details": detail},
+        ) from exc
+
+    started = time.perf_counter()
+    try:
+        analysis = analyse_document_text(extracted.text)
+    except ProviderError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "code": "ANALYSIS_PROVIDER_ERROR",
+                "message": "The document analysis provider could not complete this request.",
+                "details": "Check the configured model provider and legal index, then try again.",
+            },
+        ) from exc
+
+    processing_time = round(time.perf_counter() - started, 2)
+    document = Document(
+        id=extracted.document_id,
+        filename=extracted.filename,
+        file_type=extracted.mime_type,
+        file_size=extracted.file_size_bytes,
+        processing_status="completed",
+        user_id=current_user.id,
+    )
+    summary = Summary(
+        id=str(uuid.uuid4()),
+        document_id=extracted.document_id,
+        summary=analysis["summary"],
+        processing_time=processing_time,
+    )
+    try:
+        db.add(document)
+        db.add(summary)
+        db.commit()
+    except SQLAlchemyError as exc:
+        db.rollback()
+        print(f"[analyze_document] database error: {type(exc).__name__}")
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "code": "DATABASE_ERROR",
+                "message": "Analysis completed but could not be saved.",
+                "details": "Check the database connection and document migrations, then retry.",
+            },
+        ) from exc
+
+    try:
+        from shared.config import LLM_PROVIDER
+    except Exception:
+        LLM_PROVIDER = None
+
+    safe_entities = analysis.get("entities", {})
+    if isinstance(safe_entities, dict):
+        complex_entities = safe_entities.get("complex_entities")
+        if isinstance(complex_entities, dict) and "error" in complex_entities:
+            safe_entities = {**safe_entities, "complex_entities": {
+                key: value for key, value in complex_entities.items() if key != "error"
+            }}
+
+    return DocumentAnalysisResponse(
+        document_id=extracted.document_id,
+        filename=extracted.filename,
+        file_size_bytes=extracted.file_size_bytes,
+        char_count=extracted.char_count,
+        summary=analysis["summary"],
+        entities=safe_entities,
+        tax_insights=analysis.get("tax_insights", {}),
+        tax_insight_sources=analysis.get("tax_insight_sources", {}),
+        tax_insight_grounding=analysis.get("tax_insight_grounding", {}),
+        processing_time=processing_time,
+        provider=LLM_PROVIDER,
     )
 
 

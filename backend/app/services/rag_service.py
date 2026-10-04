@@ -158,3 +158,16 @@ def analyse_document(file_path: str | Path) -> dict[str, Any]:
             "Insight pipeline failure",
             f"Failed to run document insight pipeline: {type(exc).__name__}: {str(exc)}",
         ) from exc
+
+
+def analyse_document_text(text: str) -> dict[str, Any]:
+    """Run the existing document insight pipeline after the API parser extracts text."""
+    from nlp_pipeline.src.insight import generate_insights_from_text  # noqa: PLC0415
+
+    try:
+        return generate_insights_from_text(text)
+    except Exception as exc:
+        raise ProviderError(
+            "Insight pipeline failure",
+            f"Failed to run document insight pipeline: {type(exc).__name__}: {str(exc)}",
+        ) from exc

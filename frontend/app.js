@@ -18,6 +18,25 @@ const sourcesToggle = document.querySelector("#sourcesToggle");
 const mobileScrim = document.querySelector("#mobileScrim");
 const drawerClose = document.querySelector("#drawerClose");
 const announcer = document.querySelector("#announcer");
+const documentsNav = document.querySelector("#documentsNav");
+const documentWorkspace = document.querySelector("#documentsView");
+const authPanel = document.querySelector("#documentAuthPanel");
+const uploadPanel = document.querySelector("#documentUploadPanel");
+const authForm = document.querySelector("#documentAuthForm");
+const authModeToggle = document.querySelector("#authModeToggle");
+const authSubmit = document.querySelector("#authSubmit");
+const authMessage = document.querySelector("#authMessage");
+const uploadForm = document.querySelector("#documentUploadForm");
+const documentFile = document.querySelector("#documentFile");
+const documentDropZone = document.querySelector("#documentDropZone");
+const analyzeButton = document.querySelector("#analyzeButton");
+const uploadMessage = document.querySelector("#uploadMessage");
+const analysisResults = document.querySelector("#analysisResults");
+
+let accessToken = null;
+let creatingAccount = false;
+let authPending = false;
+let analysisPending = false;
 
 let pending = false;
 let turns = [];
@@ -243,6 +262,220 @@ function errorMessage(data, status) {
   return `The tax-law service could not be reached (HTTP ${status}). Please try again.`;
 }
 
+function showFormMessage(target, message, kind = "") {
+  target.textContent = message;
+  target.classList.toggle("is-error", kind === "error");
+  target.classList.toggle("is-success", kind === "success");
+}
+
+function setDocumentAccount(email) {
+  authPanel.hidden = Boolean(accessToken);
+  uploadPanel.hidden = !accessToken;
+  if (accessToken) {
+    document.querySelector("#uploadHeading").textContent = `Welcome, ${email}`;
+    document.querySelector("#accountHeading").textContent = "Signed in";
+  } else {
+    document.querySelector("#accountHeading").textContent = "Sign in to analyze a document";
+    document.querySelector("#uploadHeading").textContent = "Choose a document to analyze";
+  }
+}
+
+async function postJson(path, body) {
+  let response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    throw new Error("Could not reach the backend. Start the API server and try again.");
+  }
+  let data = {};
+  try { data = await response.json(); } catch { /* handled below */ }
+  if (!response.ok) throw new Error(errorMessage(data, response.status));
+  return data;
+}
+
+async function handleAuth(event) {
+  event.preventDefault();
+  if (authPending) return;
+  const email = document.querySelector("#documentEmail").value.trim();
+  const password = document.querySelector("#documentPassword").value;
+  authPending = true;
+  authSubmit.disabled = true;
+  authSubmit.textContent = creatingAccount ? "Creating account…" : "Signing in…";
+  showFormMessage(authMessage, "Connecting securely…");
+  try {
+    if (creatingAccount) await postJson("/auth/register", { email, password });
+    const token = await postJson("/auth/login", { email, password });
+    if (typeof token.access_token !== "string") throw new Error("The sign-in response did not include an access token.");
+    accessToken = token.access_token;
+    setDocumentAccount(email);
+    showFormMessage(uploadMessage, "Choose a file to begin.");
+    document.querySelector("#documentPassword").value = "";
+    announcer.textContent = "Signed in. You can now upload a document.";
+  } catch (error) {
+    showFormMessage(authMessage, error.message, "error");
+  } finally {
+    authPending = false;
+    authSubmit.disabled = false;
+    authSubmit.textContent = creatingAccount ? "Create account" : "Sign in";
+  }
+}
+
+function formatEntityValue(value) {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) return value.length ? value.map(formatEntityValue).join(", ") : "None identified";
+  if (value && typeof value === "object") {
+    const items = Object.entries(value).filter(([key]) => key !== "error");
+    return items.length ? items.map(([key, item]) => `${key}: ${formatEntityValue(item)}`).join(" · ") : "No additional details identified";
+  }
+  return String(value ?? "Not identified");
+}
+
+function renderEntities(entities) {
+  const target = document.querySelector("#entityList");
+  target.replaceChildren();
+  const entries = entities && typeof entities === "object" ? Object.entries(entities) : [];
+  const visible = entries.filter(([, value]) => !(value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length === 0));
+  if (!visible.length) {
+    target.append(element("p", "result-empty", "The extraction pipeline did not identify financial details in this document."));
+    return;
+  }
+  visible.forEach(([label, value]) => {
+    const item = element("div", "entity-item");
+    item.append(element("span", "entity-label", label.replaceAll("_", " ")));
+    item.append(element("span", "entity-value", formatEntityValue(value)));
+    target.append(item);
+  });
+}
+
+function renderInsightSources(sources) {
+  const list = element("details", "insight-sources");
+  const summary = element("summary", "", `Retrieved sources (${sources.length})`);
+  list.append(summary);
+  sources.forEach((source) => {
+    const item = element("p", "insight-source");
+    const title = source.citation || source.document || source.short || "Retrieved passage";
+    item.append(element("strong", "", title));
+    if (source.excerpt) item.append(document.createTextNode(source.excerpt));
+    const url = safeWebUrl(source.url);
+    if (url) {
+      item.append(document.createTextNode(" "));
+      const link = element("a", "", "Open source ↗");
+      link.href = url;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      item.append(link);
+    }
+    list.append(item);
+  });
+  return list;
+}
+
+function renderInsights(data) {
+  const target = document.querySelector("#insightList");
+  target.replaceChildren();
+  const insights = data.tax_insights && typeof data.tax_insights === "object" ? Object.entries(data.tax_insights) : [];
+  if (!insights.length) {
+    target.append(element("p", "result-empty", "No tax-law insights were returned for this document."));
+    return;
+  }
+  insights.forEach(([key, answer]) => {
+    const item = element("article", "insight-item");
+    const title = element("h3", "insight-title");
+    title.append(element("span", "", key === "general" ? "General tax-saving provisions" : `Section ${key}`));
+    const grounded = Boolean(data.tax_insight_grounding?.[key]);
+    title.append(element("span", `grounding-badge${grounded ? "" : " is-ungrounded"}`, grounded ? "Grounded" : "Insufficient grounding"));
+    item.append(title);
+    item.append(element("p", "insight-text", String(answer)));
+    const sources = data.tax_insight_sources?.[key];
+    if (grounded && Array.isArray(sources) && sources.length) item.append(renderInsightSources(sources));
+    target.append(item);
+  });
+}
+
+function renderDocumentAnalysis(data) {
+  document.querySelector("#resultFilename").textContent = data.filename || "Analyzed document";
+  document.querySelector("#analysisDuration").textContent = Number.isFinite(data.processing_time) ? `${data.processing_time.toFixed(1)} sec` : "";
+  document.querySelector("#analysisSummary").textContent = data.summary || "The summarizer returned no summary.";
+  renderEntities(data.entities);
+  renderInsights(data);
+  analysisResults.hidden = false;
+  analysisResults.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+async function analyzeDocument(event) {
+  event.preventDefault();
+  if (analysisPending || !accessToken) return;
+  const file = documentFile.files?.[0];
+  if (!file) return;
+  if (file.size > 20 * 1024 * 1024) {
+    showFormMessage(uploadMessage, "This file is larger than the current 20 MB upload limit.", "error");
+    return;
+  }
+  analysisPending = true;
+  analyzeButton.disabled = true;
+  analyzeButton.classList.add("is-loading");
+  analyzeButton.textContent = "Analyzing…";
+  analysisResults.hidden = true;
+  showFormMessage(uploadMessage, "Extracting text, summarizing, and retrieving related tax provisions. This may take a little while.");
+  const payload = new FormData();
+  payload.append("file", file);
+  try {
+    const response = await fetch(`${API_BASE}/documents/analyze`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
+      body: payload,
+    });
+    let data = {};
+    try { data = await response.json(); } catch { /* handled below */ }
+    if (response.status === 401) {
+      accessToken = null;
+      setDocumentAccount("");
+      throw new Error("Your session expired. Please sign in again.");
+    }
+    if (!response.ok) throw new Error(errorMessage(data, response.status));
+    if (!data.summary || !data.document_id || !data.tax_insights) throw new Error("The analysis service returned incomplete results.");
+    renderDocumentAnalysis(data);
+    showFormMessage(uploadMessage, "Analysis complete. The document and summary were saved to your account.", "success");
+    announcer.textContent = "Document analysis completed. Summary and tax-law insights are ready.";
+  } catch (error) {
+    showFormMessage(uploadMessage, error instanceof TypeError ? "The analysis service could not be reached. Check that the backend is running." : error.message, "error");
+    announcer.textContent = error.message;
+  } finally {
+    analysisPending = false;
+    analyzeButton.classList.remove("is-loading");
+    analyzeButton.textContent = "Analyze document";
+    analyzeButton.disabled = !documentFile.files?.length;
+  }
+}
+
+function updateSelectedDocument(file) {
+  document.querySelector("#selectedFileName").textContent = file?.name || "Select a tax document";
+  document.querySelector("#selectedFileHint").textContent = file ? `${(file.size / (1024 * 1024)).toFixed(2)} MB · ${file.type || "Document"}` : "Choose a file or drop it here";
+  analyzeButton.disabled = !file || analysisPending;
+  analysisResults.hidden = true;
+  if (file) showFormMessage(uploadMessage, "Ready to analyze. The original file is removed from temporary storage after extraction.");
+}
+
+function showDocuments() {
+  closeSources({ returnFocus: false });
+  appShell.classList.add("documents-open");
+  documentsNav.setAttribute("aria-current", "page");
+  documentWorkspace.hidden = false;
+  documentWorkspace.scrollTop = 0;
+  (accessToken ? documentFile : document.querySelector("#documentEmail")).focus({ preventScroll: true });
+}
+
+function showChat() {
+  appShell.classList.remove("documents-open");
+  documentsNav.setAttribute("aria-current", "false");
+  documentWorkspace.hidden = true;
+  input.focus({ preventScroll: true });
+}
+
 async function ask(question, { retry = false } = {}) {
   const cleaned = question.trim();
   if (!cleaned || pending) return;
@@ -335,6 +568,49 @@ function closeSources({ returnFocus = true } = {}) {
     sourcesToggle.focus({ preventScroll: true });
   }
 }
+
+documentsNav.addEventListener("click", () => {
+  if (appShell.classList.contains("documents-open")) showChat();
+  else showDocuments();
+});
+authForm.addEventListener("submit", handleAuth);
+authModeToggle.addEventListener("click", () => {
+  creatingAccount = !creatingAccount;
+  authSubmit.textContent = creatingAccount ? "Create account" : "Sign in";
+  authModeToggle.textContent = creatingAccount ? "I already have an account" : "Create account";
+  document.querySelector("#documentPassword").autocomplete = creatingAccount ? "new-password" : "current-password";
+  showFormMessage(authMessage, creatingAccount ? "Use at least 8 characters. Your password is stored as a secure hash." : "");
+});
+document.querySelector("#signOutButton").addEventListener("click", () => {
+  accessToken = null;
+  documentFile.value = "";
+  updateSelectedDocument(null);
+  analysisResults.hidden = true;
+  setDocumentAccount("");
+  showFormMessage(authMessage, "You have signed out.", "success");
+});
+documentFile.addEventListener("change", () => updateSelectedDocument(documentFile.files?.[0] || null));
+uploadForm.addEventListener("submit", analyzeDocument);
+for (const name of ["dragenter", "dragover"]) {
+  documentDropZone.addEventListener(name, (event) => {
+    event.preventDefault();
+    documentDropZone.classList.add("is-dragging");
+  });
+}
+for (const name of ["dragleave", "drop"]) {
+  documentDropZone.addEventListener(name, (event) => {
+    event.preventDefault();
+    documentDropZone.classList.remove("is-dragging");
+  });
+}
+documentDropZone.addEventListener("drop", (event) => {
+  const [file] = event.dataTransfer?.files || [];
+  if (!file) return;
+  const transfer = new DataTransfer();
+  transfer.items.add(file);
+  documentFile.files = transfer.files;
+  updateSelectedDocument(file);
+});
 
 composer.addEventListener("submit", (event) => {
   event.preventDefault();

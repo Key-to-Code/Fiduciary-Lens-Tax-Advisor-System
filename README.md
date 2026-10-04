@@ -80,6 +80,22 @@ Authentication, document history, and persisted summaries do: configure
 `DATABASE_URL`, start PostgreSQL, and run `alembic upgrade head` before using
 those routes.
 
+### Analyze a document in the frontend
+
+Open **Documents** in the application and sign in or create an account. Upload a
+PDF, TXT, MD, or CSV file (maximum 20 MB by default) to run the existing
+`nlp_pipeline/src/insight.py` flow. The app displays its summary, extracted
+financial entities, and per-section tax-law RAG insights with their grounding
+state and retrieved passages. The summary and document metadata are saved to the
+signed-in user's account; the uploaded file itself is held in temporary storage
+only. This pipeline uses the current tax-law corpus for related provisions; it
+does not add uploaded documents to that corpus or provide free-form Q&A over the
+uploaded file.
+
+Document analysis requires PostgreSQL, the configured `DATABASE_URL`, and
+`alembic upgrade head`. Model-backed summary/entity extraction also needs a
+working configured provider; the RAG insight stage needs the built legal index.
+
 ---
 
 ## Directory Structure
