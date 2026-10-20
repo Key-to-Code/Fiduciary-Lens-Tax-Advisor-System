@@ -8,6 +8,7 @@ GET  /api/v1/knowledge  — index freshness from the FAISS manifest (no model lo
 from __future__ import annotations
 
 import json
+import os
 
 from fastapi import APIRouter, HTTPException
 
@@ -24,6 +25,20 @@ from backend.app.services.rag_service import ProviderError, ask_tax_question
 router = APIRouter(tags=["Tax Q&A"])
 _DEFAULT_INDEX_DIR = config.INDEX_DIR
 INDEX_DIR = config.INDEX_DIR
+
+
+def _generation_configuration() -> tuple[str, str | None]:
+    """Return model identifiers only; credentials and endpoint secrets stay private."""
+    provider = config.LLM_PROVIDER.lower()
+    if provider == "openai" and "openrouter.ai" in os.getenv("OPENAI_BASE_URL", "").lower():
+        provider = "openrouter"
+    model = {
+        "openai": config.OPENAI_MODEL,
+        "openrouter": config.OPENAI_MODEL,
+        "ollama": config.OLLAMA_MODEL,
+        "local": config.LOCAL_MODEL,
+    }.get(provider)
+    return provider, model
 
 
 def _knowledge_label(available: bool, n_chunks: int, documents: list[str]) -> str:
@@ -44,6 +59,7 @@ def _knowledge_label(available: bool, n_chunks: int, documents: list[str]) -> st
     description="Reads index/manifest.json only. Does not load embeddings or the LLM.",
 )
 def knowledge_status() -> KnowledgeStatusResponse:
+    generation_provider, generation_model = _generation_configuration()
     index_dir = config.INDEX_DIR if config.INDEX_DIR != _DEFAULT_INDEX_DIR else INDEX_DIR
     manifest_path = index_dir / "manifest.json"
     if not manifest_path.exists():
@@ -53,6 +69,8 @@ def knowledge_status() -> KnowledgeStatusResponse:
             n_chunks=0,
             documents=[],
             embed_model=None,
+            generation_provider=generation_provider,
+            generation_model=generation_model,
             label=_knowledge_label(False, 0, []),
         )
     try:
@@ -64,6 +82,8 @@ def knowledge_status() -> KnowledgeStatusResponse:
             n_chunks=0,
             documents=[],
             embed_model=None,
+            generation_provider=generation_provider,
+            generation_model=generation_model,
             label=_knowledge_label(False, 0, []),
         )
     documents = list(manifest.get("documents") or [])
@@ -74,6 +94,8 @@ def knowledge_status() -> KnowledgeStatusResponse:
         n_chunks=n_chunks,
         documents=documents,
         embed_model=manifest.get("embed_model"),
+        generation_provider=generation_provider,
+        generation_model=generation_model,
         label=_knowledge_label(True, n_chunks, documents),
     )
 

@@ -18,6 +18,11 @@ class Hit:
     score: float        # fused rank score, 0..1 — for ordering only
     dense_score: float  # raw cosine similarity — comparable across queries
     lexical_score: float
+    # Normalised components used by the fusion formula. These let callers
+    # explain a ranking without recomputing against a possibly different pool.
+    dense_norm: float = 0.0
+    lexical_norm: float = 0.0
+    statute_weight: float = 1.0
 
 
 def _normalise(scores: np.ndarray) -> np.ndarray:
@@ -85,6 +90,9 @@ def search(index: SearchIndex, question: str, top_k: int | None = None,
             score=round(float(score), 4),
             dense_score=round(float(dense_by_id.get(doc_id, 0.0)), 4),
             lexical_score=round(float(lexical_by_id.get(doc_id, 0.0)), 4),
+            dense_norm=round(float(dense_norm.get(doc_id, 0.0)), 4),
+            lexical_norm=round(float(lexical_norm.get(doc_id, 0.0)), 4),
+            statute_weight=_statute_weight(chunk),
         ))
         if len(hits) >= top_k:
             break

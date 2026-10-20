@@ -32,6 +32,10 @@ const documentDropZone = document.querySelector("#documentDropZone");
 const analyzeButton = document.querySelector("#analyzeButton");
 const uploadMessage = document.querySelector("#uploadMessage");
 const analysisResults = document.querySelector("#analysisResults");
+const membersNav = document.querySelector("#membersNav");
+const evaluationNav = document.querySelector("#evaluationNav");
+const membersView = document.querySelector("#membersView");
+const evaluationView = document.querySelector("#evaluationView");
 
 let accessToken = null;
 let creatingAccount = false;
@@ -214,6 +218,29 @@ function renderSources(sources) {
     if (source.document) card.append(element("p", "source-meta", source.document));
     if (source.as_of) card.append(element("p", "source-meta", source.as_of));
     if (source.excerpt) card.append(element("p", "source-excerpt", source.excerpt));
+    if (source.attribution) {
+      const attribution = source.attribution;
+      const explain = element("details", "source-attribution");
+      const summary = element("summary", "", "Why this source ranked");
+      explain.append(summary);
+      const formula = element("p", "attribution-formula", `${attribution.algorithm || "Hybrid retrieval attribution"} · total score ${Number(source.score ?? 0).toFixed(3)}`);
+      explain.append(formula);
+      const contributions = element("div", "attribution-contributions");
+      [
+        [`Dense embedding · ${Math.round(Number(attribution.dense_weight ?? 0) * 100)}%`, attribution.dense_contribution],
+        [`BM25 terms · ${Math.round(Number(attribution.bm25_weight ?? 0) * 100)}%`, attribution.bm25_contribution],
+      ].forEach(([label, value]) => {
+        const row = element("div", "attribution-row");
+        row.append(element("span", "", label));
+        row.append(element("strong", "", Number(value ?? 0).toFixed(3)));
+        contributions.append(row);
+      });
+      if (Number(attribution.statute_weight ?? 1) < 1) {
+        contributions.append(element("p", "attribution-formula", `Statute weight applied: ${Number(attribution.statute_weight).toFixed(2)}`));
+      }
+      explain.append(contributions);
+      card.append(explain);
+    }
 
     const url = safeWebUrl(source.url);
     if (url) {
@@ -360,6 +387,24 @@ function renderInsightSources(sources) {
     const title = source.citation || source.document || source.short || "Retrieved passage";
     item.append(element("strong", "", title));
     if (source.excerpt) item.append(document.createTextNode(source.excerpt));
+    if (source.attribution) {
+      const attribution = source.attribution;
+      const explain = element("details", "source-attribution");
+      explain.append(element("summary", "", "Why this source ranked"));
+      explain.append(element("p", "attribution-formula", `${attribution.algorithm || "Hybrid retrieval attribution"} · score ${Number(source.score ?? 0).toFixed(3)}`));
+      const breakdown = element("div", "attribution-contributions");
+      [
+        [`Dense embedding · ${Math.round(Number(attribution.dense_weight ?? 0) * 100)}%`, attribution.dense_contribution],
+        [`BM25 terms · ${Math.round(Number(attribution.bm25_weight ?? 0) * 100)}%`, attribution.bm25_contribution],
+      ].forEach(([label, value]) => {
+        const row = element("div", "attribution-row");
+        row.append(element("span", "", label));
+        row.append(element("strong", "", Number(value ?? 0).toFixed(3)));
+        breakdown.append(row);
+      });
+      explain.append(breakdown);
+      item.append(explain);
+    }
     const url = safeWebUrl(source.url);
     if (url) {
       item.append(document.createTextNode(" "));
@@ -462,8 +507,11 @@ function updateSelectedDocument(file) {
 
 function showDocuments() {
   closeSources({ returnFocus: false });
+  appShell.classList.remove("project-page-open");
   appShell.classList.add("documents-open");
-  documentsNav.setAttribute("aria-current", "page");
+  setCurrentNavigation("documents");
+  membersView.hidden = true;
+  evaluationView.hidden = true;
   documentWorkspace.hidden = false;
   documentWorkspace.scrollTop = 0;
   (accessToken ? documentFile : document.querySelector("#documentEmail")).focus({ preventScroll: true });
@@ -471,9 +519,231 @@ function showDocuments() {
 
 function showChat() {
   appShell.classList.remove("documents-open");
-  documentsNav.setAttribute("aria-current", "false");
+  appShell.classList.remove("project-page-open");
+  setCurrentNavigation("chat");
   documentWorkspace.hidden = true;
+  membersView.hidden = true;
+  evaluationView.hidden = true;
   input.focus({ preventScroll: true });
+}
+
+function setCurrentNavigation(current) {
+  const navigation = { documents: documentsNav, members: membersNav, evaluation: evaluationNav };
+  Object.entries(navigation).forEach(([name, button]) => {
+    button.setAttribute("aria-current", name === current ? "page" : "false");
+  });
+}
+
+function appendLink(parent, label, href, className = "project-link") {
+  const link = element("a", className, label);
+  link.href = href;
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  parent.append(link);
+  return link;
+}
+
+function renderProjectContext(project) {
+  const context = document.querySelector("#projectContext");
+  context.replaceChildren();
+  [["Group", project.group], ["Category", project.category], ["Course", `${project.courseCode} · ${project.courseName}`]].forEach(([label, value]) => {
+    const item = element("div", "context-item");
+    item.append(element("span", "context-label", label));
+    item.append(element("strong", "context-value", value));
+    context.append(item);
+  });
+}
+
+function renderFaculty(faculty) {
+  const card = document.querySelector("#facultyCard");
+  card.replaceChildren();
+  const content = element("div", "faculty-content");
+  content.append(element("p", "faculty-role", faculty.role));
+  content.append(element("h3", "faculty-name", faculty.name));
+  content.append(element("p", "faculty-department", faculty.department));
+  content.append(element("p", "faculty-school", faculty.school));
+  const credentials = element("div", "faculty-credentials");
+  credentials.append(element("span", "credential-label", "Qualification"));
+  credentials.append(element("strong", "", faculty.qualification));
+  content.append(credentials);
+  const links = element("div", "faculty-links");
+  const email = element("a", "project-link", faculty.email);
+  email.href = `mailto:${faculty.email}`;
+  links.append(email);
+  content.append(links);
+  card.append(content);
+}
+
+function renderMembers(members) {
+  const grid = document.querySelector("#memberGrid");
+  grid.replaceChildren();
+  members.forEach((member, index) => {
+    const card = element("article", "member-card");
+    const top = element("div", "member-card-topline");
+    top.append(element("span", "member-index", `0${index + 1}`));
+    top.append(element("span", "member-caption", "Team member"));
+    card.append(top);
+    card.append(element("h3", "member-name", member.name));
+    card.append(element("p", "member-roll", member.rollNo));
+    const contacts = element("dl", "member-contacts");
+    [["Email", member.email, `mailto:${member.email}`], ["Mobile", member.phone, `tel:${member.phone}`]].forEach(([label, value, href]) => {
+      const row = element("div", "member-contact-row");
+      row.append(element("dt", "", label));
+      const dd = element("dd", "");
+      const link = element("a", "member-contact-link", value);
+      link.href = href;
+      dd.append(link);
+      row.append(dd);
+      contacts.append(row);
+    });
+    const githubRow = element("div", "member-contact-row");
+    githubRow.append(element("dt", "", "GitHub"));
+    const githubValue = element("dd", "");
+    appendLink(githubValue, member.github.replace("https://github.com/", "@"), member.github, "member-contact-link");
+    githubRow.append(githubValue);
+    contacts.append(githubRow);
+    card.append(contacts);
+    grid.append(card);
+  });
+}
+
+function renderProjectLinks(project) {
+  const footer = document.querySelector("#projectLinks");
+  footer.replaceChildren();
+  const repository = element("div", "project-link-group");
+  repository.append(element("span", "context-label", "Project repository"));
+  appendLink(repository, "View on GitHub ↗", project.repository);
+  footer.append(repository);
+  const demo = element("div", "project-link-group");
+  demo.append(element("span", "context-label", "Product demo"));
+  demo.append(element("span", "unavailable-link", project.productDemo || "Link not included in the supplied details"));
+  footer.append(demo);
+}
+
+function renderEvaluation(evaluation) {
+  const retrieval = evaluation.retrieval;
+  const metrics = document.querySelector("#retrievalMetrics");
+  metrics.replaceChildren();
+  [
+    [`Recall@${retrieval.k}`, `${Math.round(retrieval.recall * 100)}%`, `${retrieval.recallCount}/${retrieval.questions} target provisions in the top ${retrieval.k}`],
+    ["Mean reciprocal rank", retrieval.mrr.toFixed(3), "Average rank of the first matching provision"],
+    ["Off-topic refusal", `${Math.round(retrieval.refusalRate * 100)}%`, `${retrieval.refusedOffTopic}/${retrieval.offTopicQuestions} unrelated prompts refused`],
+  ].forEach(([label, value, note]) => {
+    const card = element("article", "metric-card");
+    card.append(element("span", "metric-label", label));
+    card.append(element("strong", "metric-value", value));
+    card.append(element("span", "metric-note", note));
+    metrics.append(card);
+  });
+
+  const details = document.querySelector("#retrievalDetails");
+  details.replaceChildren();
+  [
+    ["Index", `${retrieval.indexChunks.toLocaleString()} passages`],
+    ["Embedding model", retrieval.embeddingModel],
+    ["Retrieval", retrieval.retrievalMethod],
+    ["Evaluation set", `${retrieval.questions} in-scope prompts · ${retrieval.offTopicQuestions} off-topic controls`],
+  ].forEach(([label, value]) => {
+    const row = element("div", "evaluation-detail-row");
+    row.append(element("span", "", label));
+    row.append(element("strong", "", value));
+    details.append(row);
+  });
+  details.append(element("p", "evaluation-historical-note", evaluation.historicalNote));
+
+  const modelGrid = document.querySelector("#modelPerformanceGrid");
+  modelGrid.replaceChildren();
+  evaluation.models.forEach((model) => {
+    const card = element("article", "model-performance-card");
+    const header = element("div", "model-card-heading");
+    header.append(element("span", "model-role", model.role));
+    header.append(element("span", model.measured ? "measurement-tag is-measured" : "measurement-tag", model.measurementLabel || (model.measured ? "Measured" : "Not benchmarked")));
+    card.append(header);
+    card.append(element("h3", "", model.name));
+    if (model.runtime) card.lastChild.dataset.runtimeModel = "true";
+    card.append(element("p", "model-description", model.description));
+    const measures = element("ul", "model-measures");
+    model.measures.forEach((measure) => measures.append(element("li", "", measure)));
+    card.append(measures);
+    modelGrid.append(card);
+  });
+  const xai = document.querySelector("#xaiMethodCard");
+  xai.replaceChildren();
+  xai.append(element("strong", "", evaluation.xai.name));
+  xai.append(element("p", "", evaluation.xai.description));
+  xai.append(element("code", "", evaluation.xai.formula));
+
+  const harness = evaluation.harness;
+  const result = document.querySelector("#harnessResult");
+  result.replaceChildren();
+  result.append(element("span", "result-check", "✓"));
+  result.append(element("strong", "", `${harness.passed} of ${harness.testCount} checks passed`));
+  result.append(element("span", "result-date", `· ${evaluation.verifiedOn}`));
+  const checks = document.querySelector("#evaluationChecks");
+  checks.replaceChildren();
+  harness.checks.forEach((check) => {
+    const row = element("li", "evaluation-check");
+    row.append(element("span", "check-mark", "✓"));
+    row.append(element("span", "", check));
+    checks.append(row);
+  });
+  document.querySelector("#evaluationIntro").textContent = `The current index was measured with a fixed tax-law retrieval set. Separate deterministic tests check the evaluation code; they do not measure the configured LLM. This page separates system-level results from per-model results that have not yet been benchmarked.`;
+  document.querySelector("#evaluationDate").textContent = `Results verified ${evaluation.verifiedOn}`;
+  document.querySelector("#evaluationCaveat").textContent = evaluation.caveat;
+}
+
+function initializeProjectPages() {
+  const project = window.FIDUCIARY_PROJECT_DATA;
+  if (!project) return;
+  renderProjectContext(project.context);
+  renderFaculty(project.faculty);
+  renderMembers(project.members);
+  renderProjectLinks(project.context);
+  renderEvaluation(project.evaluation);
+}
+
+async function updateRuntimeModelLabel() {
+  try {
+    const response = await fetch(`${API_BASE}/knowledge`, { headers: { Accept: "application/json" } });
+    if (!response.ok) return;
+    const status = await response.json();
+    const modelLabel = [status.generation_provider, status.generation_model].filter(Boolean).join(" · ");
+    if (modelLabel) {
+      document.querySelectorAll("[data-runtime-model='true']").forEach((node) => { node.textContent = modelLabel; });
+    }
+  } catch {
+    // The information page remains useful if the API is offline.
+  }
+}
+
+function showProjectPage(page) {
+  closeSources({ returnFocus: false });
+  appShell.classList.remove("documents-open");
+  appShell.classList.add("project-page-open");
+  documentWorkspace.hidden = true;
+  membersView.hidden = page !== "members";
+  evaluationView.hidden = page !== "evaluation";
+  setCurrentNavigation(page);
+  (page === "members" ? membersView : evaluationView).scrollTop = 0;
+}
+
+function activePage() {
+  if (appShell.classList.contains("documents-open")) return "documents";
+  if (!membersView.hidden) return "members";
+  if (!evaluationView.hidden) return "evaluation";
+  return "chat";
+}
+
+function navigateToPage(page) {
+  const destination = activePage() === page ? "chat" : page;
+  window.location.hash = destination === "chat" ? "#chat" : `#${destination}`;
+}
+
+function syncPageFromLocation() {
+  const page = window.location.hash.slice(1);
+  if (page === "documents") showDocuments();
+  else if (page === "members" || page === "evaluation") showProjectPage(page);
+  else showChat();
 }
 
 async function ask(question, { retry = false } = {}) {
@@ -569,10 +839,10 @@ function closeSources({ returnFocus = true } = {}) {
   }
 }
 
-documentsNav.addEventListener("click", () => {
-  if (appShell.classList.contains("documents-open")) showChat();
-  else showDocuments();
-});
+documentsNav.addEventListener("click", () => navigateToPage("documents"));
+membersNav.addEventListener("click", () => navigateToPage("members"));
+evaluationNav.addEventListener("click", () => navigateToPage("evaluation"));
+window.addEventListener("hashchange", syncPageFromLocation);
 authForm.addEventListener("submit", handleAuth);
 authModeToggle.addEventListener("click", () => {
   creatingAccount = !creatingAccount;
@@ -636,4 +906,7 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && sourcesPanel.classList.contains("is-open")) closeSources();
 });
 
+initializeProjectPages();
+updateRuntimeModelLabel();
+syncPageFromLocation();
 checkKnowledgeBase().finally(dismissSplash);

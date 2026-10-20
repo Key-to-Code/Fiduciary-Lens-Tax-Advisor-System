@@ -65,6 +65,7 @@ class SourceItem(BaseModel):
     cosine: Optional[float] = None
     excerpt: str = ""
     url: Optional[str] = None
+    attribution: Optional[dict] = None
 
 
 class AskResponse(BaseModel):
@@ -83,4 +84,6 @@ class KnowledgeStatusResponse(BaseModel):
     n_chunks: int = 0
     documents: List[str] = Field(default_factory=list)
     embed_model: Optional[str] = None
+    generation_provider: Optional[str] = None
+    generation_model: Optional[str] = None
     label: str

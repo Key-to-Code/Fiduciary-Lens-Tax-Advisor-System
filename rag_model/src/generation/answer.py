@@ -8,6 +8,7 @@ from rag_model.src.retrieval import index as index_module, retrieve
 from rag_model.src.generation import prompt
 from shared.llm_client import ExtractiveProvider, Provider, get_provider
 from rag_model.src.retrieval.retrieve import Hit
+from shared import config
 
 
 @dataclass
@@ -40,6 +41,14 @@ class Answer:
                 "chunk_id": hit.chunk.chunk_id,
                 "score": hit.score,
                 "cosine": hit.dense_score,
+                "attribution": {
+                    "algorithm": "Hybrid Retrieval Score Attribution",
+                    "dense_weight": config.DENSE_WEIGHT,
+                    "dense_contribution": round(config.DENSE_WEIGHT * hit.dense_norm * hit.statute_weight, 4),
+                    "bm25_weight": 1 - config.DENSE_WEIGHT,
+                    "bm25_contribution": round((1 - config.DENSE_WEIGHT) * hit.lexical_norm * hit.statute_weight, 4),
+                    "statute_weight": hit.statute_weight,
+                },
             }
             for position, hit in enumerate(self.hits, start=1)
         ]

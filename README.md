@@ -21,8 +21,8 @@ OPENAI_API_KEY=your_openrouter_api_key_here
 OPENAI_BASE_URL=https://openrouter.ai/api/v1
 ```
 
-### 3. Build the FAISS Index
-Before querying, you must build the vector index over the tax laws using `ai4bharat/indic-bert`.
+### 3. Build the Retrieval Index
+Before querying, build the dense and BM25 indexes over the tax laws using the configured retrieval model (`BAAI/bge-small-en-v1.5` by default).
 ```bash
 python rag_model/scripts/build_index.py
 ```
@@ -128,7 +128,7 @@ Fiduciary-Lens-Tax-Advisor-System/
 
 ## How the RAG Model Works
 
-**Hybrid retrieval.** Dense embeddings (`ai4bharat/indic-bert`) handle paraphrase ("can I write off my work laptop" → depreciation); BM25 handles the tokens embeddings blur over — provision numbers, form numbers, rupee limits. Scores are min-max normalised within each candidate pool and combined 65/35 in favour of dense.
+**Hybrid retrieval.** Dense embeddings (`BAAI/bge-small-en-v1.5` by default) handle semantic similarity; BM25 handles exact terms such as provision numbers, form numbers, and rupee limits. Scores are min-max normalised within each candidate pool and combined using `DENSE_WEIGHT` (65/35 by default). The current benchmark is for the hybrid system, not the embedder in isolation.
 
 **Fiduciary guardrails.** Grounding is enforced in code: if the best cosine score is below `MIN_SCORE` (0.60), the system refuses to answer before even calling the LLM. Furthermore, questions phrased as personal advice ("should I…") trigger instructions that force the model to provide general rules and direct the user to a Chartered Accountant.
 
@@ -136,9 +136,13 @@ Fiduciary-Lens-Tax-Advisor-System/
 
 The `insight.py` script chains the following steps:
 1. **Parse**: Uses `PyMuPDF` to read raw PDF text.
-2. **Summarize**: Prompts the Llama 3.3 model to act as an Indian CA and extract action items and deadlines.
+2. **Summarize**: Uses the configured shared LLM provider to summarize the text and extract action items and deadlines.
 3. **Extract**: Uses regex for PAN/TAN/GSTIN/Amounts, and the LLM for complex entities like Company Names or specific Tax Deduction Sections (e.g. "Section 80C").
 4. **Insights**: The extracted Tax Deduction Sections are automatically passed into the `rag_model`'s `TaxQA` engine to query the exact rules and limits for those specific deductions.
+
+## Model evaluation and explainability
+
+The Evaluation page reports current retrieval results, the runtime-configured generation provider/model, and explicit “not benchmarked” labels where this repository has no live model measurement. It also presents **Hybrid Retrieval Score Attribution**: the dense and BM25 contributions to each source's ranking, including any statute weight. This explains retrieval ranking, not the language model's hidden reasoning. See [Model Evaluation and Explainability](docs/model-evaluation-and-xai.md) for component roles, equations, limitations, and reproduction commands.
 
 ## Providers
 
