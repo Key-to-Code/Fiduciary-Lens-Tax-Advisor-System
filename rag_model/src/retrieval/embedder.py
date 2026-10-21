@@ -9,9 +9,12 @@ config.apply_tls_workaround()
 
 @functools.lru_cache(maxsize=1)
 def _model(name: str):
-    """Loads a sentence transformer model by name."""
+    """Loads a sentence transformer model by name with strict memory limits."""
+    import torch
+    torch.set_num_threads(1)
+    torch.set_grad_enabled(False)
     from sentence_transformers import SentenceTransformer
-    return SentenceTransformer(name)
+    return SentenceTransformer(name, device="cpu")
 
 
 def encode_passages(texts: list[str], show_progress: bool = False) -> np.ndarray:
