@@ -33,9 +33,9 @@ class Settings(BaseSettings):
 
     # ── CORS ─────────────────────────────────────────────────────────────────
     # Comma-separated list of allowed origins.
-    # Defaults cover the design-mockup HTML served locally and common
-    # frontend dev-server ports (Vite 5173, CRA 3000, generic 8080).
+    # Defaults cover local servers and production frontend deployments (Vercel, etc.).
     CORS_ORIGINS: List[str] = [
+        "*",
         "http://localhost:3000",
         "http://localhost:5173",
         "http://localhost:8080",

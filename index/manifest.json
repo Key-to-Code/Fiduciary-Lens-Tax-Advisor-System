@@ -1,0 +1,11 @@
+{
+  "embed_model": "BAAI/bge-small-en-v1.5",
+  "kb_path": "D:\\Fiduciary-Lens-Tax-Advisor-System\\rag_model\\data\\rag_knowledge_base.json",
+  "n_chunks": 3496,
+  "dim": 384,
+  "documents": [
+    "Finance-Act-2026.pdf",
+    "Income-tax-Act-2025_2026_2026-06-10_03-46-08_691051_en.pdf",
+    "Income-tax-Rules-2026_2026-06-22_03-37-12_06bfa6_en.pdf"
+  ]
+}

@@ -1,6 +1,5 @@
-# Generated retrieval artifacts -- rebuildable with
-# `python rag_model/scripts/build_index.py`
-index/
+# Generated retrieval artifacts -- tracked so cloud hosts have prebuilt index
+# index/
 
 # Source PDFs exceed GitHub's file limits (the Act is 101.8 MB, over the hard
 # 100 MB cap; the Rules are 68.7 MB). They are only needed to regenerate
