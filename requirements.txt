@@ -18,3 +18,16 @@ langchain-text-splitters>=0.3
 
 # Tests
 pytest>=8.0
+
+# Backend & Web layer (FastAPI, Uvicorn, Pydantic, Auth)
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic-settings>=2.3
+python-dotenv>=1.0
+python-multipart>=0.0.9
+sqlalchemy>=2.0
+psycopg[binary]>=3.1
+alembic>=1.13
+bcrypt>=4.0
+PyJWT>=2.8
+email-validator>=2.0
