@@ -66,7 +66,7 @@ def build(kb_path: Path | None = None, index_dir: Path | None = None,
 
     (index_dir / _MANIFEST).write_text(json.dumps({
         "embed_model": config.EMBED_MODEL,
-        "kb_path": str(kb_path or config.KB_JSON),
+        "kb_path": "rag_model/data/rag_knowledge_base.json",
         "n_chunks": len(chunks),
         "dim": int(vectors.shape[1]),
         "documents": sorted({c.document_name for c in chunks}),
@@ -86,7 +86,9 @@ def load(index_dir: Path | None = None, kb_path: Path | None = None) -> SearchIn
         )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
 
-    chunks = load_chunks(kb_path or manifest["kb_path"])
+    manifest_kb = Path(manifest.get("kb_path", ""))
+    target_kb = kb_path or (manifest_kb if manifest_kb.exists() else config.KB_JSON)
+    chunks = load_chunks(target_kb)
     if len(chunks) != manifest["n_chunks"]:
         raise RuntimeError(
             f"Knowledge base changed ({len(chunks)} chunks vs {manifest['n_chunks']} "

@@ -1,6 +1,6 @@
 {
   "embed_model": "BAAI/bge-small-en-v1.5",
-  "kb_path": "D:\\Fiduciary-Lens-Tax-Advisor-System\\rag_model\\data\\rag_knowledge_base.json",
+  "kb_path": "rag_model/data/rag_knowledge_base.json",
   "n_chunks": 3496,
   "dim": 384,
   "documents": [
