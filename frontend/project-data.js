@@ -39,9 +39,9 @@ window.FIDUCIARY_PROJECT_DATA = Object.freeze({
       github: "https://github.com/Key-to-Code",
     },
     {
-      rollNo: "CB.SC.U4CSE24156",
+      rollNo: "CB.SC.U4CSE24151",
       name: "Sudharshan Sambathkumar",
-      email: "cb.sc.u4cse24156@cb.students.amrita.edu",
+      email: "cb.sc.u4cse24151@cb.students.amrita.edu",
       phone: "7418523795",
       github: "https://github.com/SL8Entropy",
     },
@@ -95,11 +95,249 @@ window.FIDUCIARY_PROJECT_DATA = Object.freeze({
         description: "PAN, TAN, GSTIN and amounts use deterministic patterns; complex organization and deduction extraction uses the configured language model.",
         measures: ["Entity precision / recall: not benchmarked"],
       },
+    ,
+      {
+        "role": "Deep-learning comparison · statistical LM",
+        "name": "Trigram SLM (from scratch)",
+        "runtime": false,
+        "measured": true,
+        "measurementLabel": "Statutory-source classification",
+        "description": "Class-conditional trigram LM, add-k smoothing (k=0.1), vocabulary capped at 8,000 types. Classifies by highest length-normalised log-likelihood.",
+        "measures": [
+          "Accuracy: 0.884",
+          "Precision (macro): 0.888",
+          "Recall (macro): 0.884",
+          "F1 (macro): 0.884",
+          "Perplexity: 552.94",
+          "BLEU: 0.0361",
+          "ROUGE-L: 0.1321",
+          "Parameters: 91,973 count cells",
+          "Training: 0.15 s on CPU",
+          "Inference: 0.38 ms/passage"
+        ]
+      },
+      {
+        "role": "Deep-learning comparison · transformer",
+        "name": "BERT (frozen + linear probe)",
+        "runtime": false,
+        "measured": true,
+        "measurementLabel": "Statutory-source classification",
+        "description": "Mean-pooled final-layer embeddings from a frozen bert-base-uncased, classified by multinomial logistic regression. Not fine-tuned. Truncated at 256 tokens.",
+        "measures": [
+          "Accuracy: 0.849",
+          "Precision (macro): 0.851",
+          "Recall (macro): 0.849",
+          "F1 (macro): 0.850",
+          "Parameters: 109.48 M",
+          "Training: 35.18 s on CUDA",
+          "Inference: 23.51 ms/passage"
+        ]
+      },
+      {
+        "role": "Deep-learning comparison · transformer",
+        "name": "DistilBERT (frozen + linear probe)",
+        "runtime": false,
+        "measured": true,
+        "measurementLabel": "Statutory-source classification",
+        "description": "Mean-pooled final-layer embeddings from a frozen distilbert-base-uncased, classified by multinomial logistic regression. Not fine-tuned. Truncated at 256 tokens.",
+        "measures": [
+          "Accuracy: 0.814",
+          "Precision (macro): 0.819",
+          "Recall (macro): 0.814",
+          "F1 (macro): 0.816",
+          "Parameters: 66.37 M",
+          "Training: 8.55 s on CUDA",
+          "Inference: 18.21 ms/passage"
+        ]
+      },
     ],
     xai: {
       name: "Hybrid Retrieval Score Attribution (HRSA)",
       description: "For each retrieved passage, the UI shows how much of its ranking score came from semantic similarity and exact-term matching, including a statute applicability penalty where one was applied.",
       formula: "score = (dense weight × normalized cosine + BM25 weight × normalized BM25) × statute weight",
+    },
+    xaiOcclusion: {
+      "name": "Leave-one-token-out occlusion attribution",
+      "appliesTo": "SLM, BERT and DistilBERT classifiers",
+      "description": "Each token is removed in turn and the drop in the margin between the predicted class and its closest rival is recorded. Tokens with the largest drop are the ones carrying the decision.",
+      "examples": [
+        {
+          "excerpt": "Eligible international transactions for safe harbour. 88. An \"eligible international transaction\" means an international transaction between the eligible assessee and its associated enterprise, one of which is necessaril",
+          "trueLabel": "Rules",
+          "predictedLabel": "Rules",
+          "topTokens": [
+            {
+              "token": "harbour",
+              "contribution": 0.14607
+            },
+            {
+              "token": "assessee",
+              "contribution": -0.12997
+            },
+            {
+              "token": "loan",
+              "contribution": 0.11436
+            },
+            {
+              "token": "research",
+              "contribution": 0.09548
+            },
+            {
+              "token": "88.",
+              "contribution": 0.08596
+            },
+            {
+              "token": "necessarily",
+              "contribution": -0.07673
+            }
+          ]
+        },
+        {
+          "excerpt": "Furnishing of authorisation and maintenance of documents, etc. for the purposes of section 176. 125. (1) For the purposes of section 176(3)(a), the authorisation to be submitted by the assessee, shall be in Form No. 61.",
+          "trueLabel": "Rules",
+          "predictedLabel": "Act",
+          "topTokens": [
+            {
+              "token": "125",
+              "contribution": -0.10776
+            },
+            {
+              "token": "61",
+              "contribution": -0.0858
+            },
+            {
+              "token": "filled",
+              "contribution": 0.07515
+            },
+            {
+              "token": "1",
+              "contribution": -0.06308
+            },
+            {
+              "token": "3",
+              "contribution": 0.05889
+            },
+            {
+              "token": "jurisdiction",
+              "contribution": -0.05005
+            }
+          ]
+        },
+        {
+          "excerpt": "made to the Transfer Pricing Officer for determining the arm's length price under section 166(1), shall be extended by an additional period of twelve months. (b) In terms of provisions of sub-section (1) [Table: Sl. Nos.",
+          "trueLabel": "Act",
+          "predictedLabel": "Act",
+          "topTokens": [
+            {
+              "token": "'s",
+              "contribution": 0.22102
+            },
+            {
+              "token": "additional",
+              "contribution": -0.14313
+            },
+            {
+              "token": "no",
+              "contribution": -0.13606
+            },
+            {
+              "token": "5",
+              "contribution": -0.11693
+            },
+            {
+              "token": "length",
+              "contribution": 0.10067
+            },
+            {
+              "token": "3",
+              "contribution": 0.09359
+            }
+          ]
+        }
+      ]
+    },
+    modelComparison: {
+      "task": "Statutory-source classification (3 classes)",
+      "taskDescription": "Given a statutory passage, predict which indexed document it came from: the Income-tax Act 2025, the Income-tax Rules 2026, or the Finance Act 2026.",
+      "dataset": {
+        "source": "Project tax-law corpus (rag_model/data/rag_knowledge_base.json)",
+        "classes": [
+          "Act",
+          "Finance Act",
+          "Rules"
+        ],
+        "passagesPerClass": 344,
+        "trainSize": 774,
+        "testSize": 258,
+        "preprocessing": "NLTK word_tokenize, punctuation and 198 English stop-words removed, WordNet lemmatisation",
+        "balanced": true
+      },
+      "rows": [
+        {
+          "metric": "Accuracy",
+          "slm": "0.884",
+          "bert": "0.849",
+          "distilbert": "0.814"
+        },
+        {
+          "metric": "Precision (macro)",
+          "slm": "0.888",
+          "bert": "0.851",
+          "distilbert": "0.819"
+        },
+        {
+          "metric": "Recall (macro)",
+          "slm": "0.884",
+          "bert": "0.849",
+          "distilbert": "0.814"
+        },
+        {
+          "metric": "F1 (macro)",
+          "slm": "0.884",
+          "bert": "0.850",
+          "distilbert": "0.816"
+        },
+        {
+          "metric": "Perplexity",
+          "slm": "552.94",
+          "bert": "n/a",
+          "distilbert": "n/a"
+        },
+        {
+          "metric": "BLEU",
+          "slm": "0.0361",
+          "bert": "n/a",
+          "distilbert": "n/a"
+        },
+        {
+          "metric": "ROUGE-L",
+          "slm": "0.1321",
+          "bert": "n/a",
+          "distilbert": "n/a"
+        },
+        {
+          "metric": "Parameters",
+          "slm": "91,973 counts",
+          "bert": "109.48 M",
+          "distilbert": "66.36 M"
+        },
+        {
+          "metric": "Training time",
+          "slm": "0.15 s",
+          "bert": "35.18 s",
+          "distilbert": "8.55 s"
+        },
+        {
+          "metric": "Inference",
+          "slm": "0.38 ms",
+          "bert": "23.51 ms",
+          "distilbert": "18.21 ms"
+        }
+      ],
+      "inference": "The trigram SLM wins every classification metric while using about one eleven-hundredth of BERT's parameters and running roughly 60 times faster. The three classes are separable on surface vocabulary, which is what an n-gram model captures and what a mean-pooled sentence embedding deliberately discards. This is a narrow result for this task, not a general ranking: the transformers were probed rather than fine-tuned, and a shallow count-based model offers nothing on the paraphrase matching the retrieval path depends on.",
+      "caveat": "BERT and DistilBERT are used as frozen encoders with a logistic-regression head, not fine-tuned. Perplexity, BLEU and ROUGE-L apply only to the SLM, the one generative model in the comparison; masked-LM pseudo-perplexity is not the same quantity and is omitted rather than printed in the same column.",
+      "chart": "../experiments/model_comparison.png",
+      "generatedAt": "2026-10-21 17:57:08"
     },
     harness: {
       command: ".venv/Scripts/python.exe -m pytest -q tests/test_llm_evaluation.py",

@@ -1,0 +1,279 @@
+{
+  "task": "Statutory-source classification (3 classes)",
+  "task_description": "Given a statutory passage, predict which indexed document it came from: the Income-tax Act 2025, the Income-tax Rules 2026, or the Finance Act 2026.",
+  "dataset": {
+    "source": "rag_model/data/rag_knowledge_base.json",
+    "classes": [
+      "Act",
+      "Finance Act",
+      "Rules"
+    ],
+    "passages_per_class": 344,
+    "train_size": 774,
+    "test_size": 258,
+    "test_fraction": 0.25,
+    "raw_class_counts": {
+      "Finance Act": 344,
+      "Act": 1918,
+      "Rules": 1234
+    },
+    "preprocessing": "NLTK word_tokenize, punctuation and 198 English stop-words removed, WordNet lemmatisation",
+    "balanced": true,
+    "seed": 20261021
+  },
+  "models": [
+    {
+      "accuracy": 0.8837,
+      "precision_macro": 0.8879,
+      "recall_macro": 0.8837,
+      "f1_macro": 0.8837,
+      "confusion_matrix": [
+        [
+          74,
+          9,
+          3
+        ],
+        [
+          4,
+          82,
+          0
+        ],
+        [
+          11,
+          3,
+          72
+        ]
+      ],
+      "confusion_labels": [
+        "Act",
+        "Finance Act",
+        "Rules"
+      ],
+      "key": "slm",
+      "display_name": "Trigram SLM (from scratch)",
+      "kind": "Statistical language model",
+      "encoder_params": 91973,
+      "head_params": 0,
+      "perplexity": 552.94,
+      "train_seconds": 0.15,
+      "inference_seconds": 0.1,
+      "inference_ms_per_passage": 0.38,
+      "device": "cpu",
+      "notes": "Class-conditional trigram LM, add-k smoothing (k=0.1), vocabulary capped at 8,000 types. Classifies by highest length-normalised log-likelihood.",
+      "bleu": 0.0361,
+      "rouge_l": 0.1321,
+      "generated_samples": 238,
+      "prompt_tokens": 12,
+      "continuation_tokens": 20
+    },
+    {
+      "accuracy": 0.8488,
+      "precision_macro": 0.8506,
+      "recall_macro": 0.8488,
+      "f1_macro": 0.8496,
+      "confusion_matrix": [
+        [
+          69,
+          4,
+          13
+        ],
+        [
+          9,
+          77,
+          0
+        ],
+        [
+          11,
+          2,
+          73
+        ]
+      ],
+      "confusion_labels": [
+        "Act",
+        "Finance Act",
+        "Rules"
+      ],
+      "encoder_params": 109482240,
+      "head_params": 2307,
+      "train_seconds": 35.18,
+      "inference_seconds": 6.07,
+      "inference_ms_per_passage": 23.51,
+      "device": "cuda",
+      "perplexity": null,
+      "bleu": null,
+      "rouge_l": null,
+      "key": "bert",
+      "display_name": "BERT (frozen + linear probe)",
+      "kind": "Pretrained transformer encoder",
+      "hf_model": "bert-base-uncased",
+      "notes": "Mean-pooled final-layer embeddings from a frozen bert-base-uncased, classified by multinomial logistic regression. Not fine-tuned. Truncated at 256 tokens."
+    },
+    {
+      "accuracy": 0.814,
+      "precision_macro": 0.8194,
+      "recall_macro": 0.814,
+      "f1_macro": 0.8157,
+      "confusion_matrix": [
+        [
+          65,
+          3,
+          18
+        ],
+        [
+          13,
+          73,
+          0
+        ],
+        [
+          12,
+          2,
+          72
+        ]
+      ],
+      "confusion_labels": [
+        "Act",
+        "Finance Act",
+        "Rules"
+      ],
+      "encoder_params": 66362880,
+      "head_params": 2307,
+      "train_seconds": 8.55,
+      "inference_seconds": 4.7,
+      "inference_ms_per_passage": 18.21,
+      "device": "cuda",
+      "perplexity": null,
+      "bleu": null,
+      "rouge_l": null,
+      "key": "distilbert",
+      "display_name": "DistilBERT (frozen + linear probe)",
+      "kind": "Pretrained transformer encoder",
+      "hf_model": "distilbert-base-uncased",
+      "notes": "Mean-pooled final-layer embeddings from a frozen distilbert-base-uncased, classified by multinomial logistic regression. Not fine-tuned. Truncated at 256 tokens."
+    }
+  ],
+  "xai": {
+    "algorithm": "Leave-one-token-out occlusion attribution",
+    "applies_to": "slm",
+    "description": "Each token is removed in turn and the drop in the margin between the predicted class and its closest rival is recorded. Tokens with the largest drop are the ones carrying the decision.",
+    "examples": [
+      {
+        "excerpt": "Eligible international transactions for safe harbour. 88. An \"eligible international transaction\" means an international transaction between the eligible assessee and its associated enterprise, one of which is necessaril",
+        "true_label": "Rules",
+        "predicted_label": "Rules",
+        "top_tokens": [
+          {
+            "token": "harbour",
+            "contribution": 0.14607
+          },
+          {
+            "token": "assessee",
+            "contribution": -0.12997
+          },
+          {
+            "token": "loan",
+            "contribution": 0.11436
+          },
+          {
+            "token": "research",
+            "contribution": 0.09548
+          },
+          {
+            "token": "88.",
+            "contribution": 0.08596
+          },
+          {
+            "token": "necessarily",
+            "contribution": -0.07673
+          },
+          {
+            "token": "enabled",
+            "contribution": 0.07149
+          },
+          {
+            "token": "safe",
+            "contribution": 0.07061
+          }
+        ]
+      },
+      {
+        "excerpt": "Furnishing of authorisation and maintenance of documents, etc. for the purposes of section 176. 125. (1) For the purposes of section 176(3)(a), the authorisation to be submitted by the assessee, shall be in Form No. 61.",
+        "true_label": "Rules",
+        "predicted_label": "Act",
+        "top_tokens": [
+          {
+            "token": "125",
+            "contribution": -0.10776
+          },
+          {
+            "token": "61",
+            "contribution": -0.0858
+          },
+          {
+            "token": "filled",
+            "contribution": 0.07515
+          },
+          {
+            "token": "1",
+            "contribution": -0.06308
+          },
+          {
+            "token": "3",
+            "contribution": 0.05889
+          },
+          {
+            "token": "jurisdiction",
+            "contribution": -0.05005
+          },
+          {
+            "token": "shall",
+            "contribution": 0.04637
+          },
+          {
+            "token": "first",
+            "contribution": 0.04351
+          }
+        ]
+      },
+      {
+        "excerpt": "made to the Transfer Pricing Officer for determining the arm's length price under section 166(1), shall be extended by an additional period of twelve months. (b) In terms of provisions of sub-section (1) [Table: Sl. Nos.",
+        "true_label": "Act",
+        "predicted_label": "Act",
+        "top_tokens": [
+          {
+            "token": "'s",
+            "contribution": 0.22102
+          },
+          {
+            "token": "additional",
+            "contribution": -0.14313
+          },
+          {
+            "token": "no",
+            "contribution": -0.13606
+          },
+          {
+            "token": "5",
+            "contribution": -0.11693
+          },
+          {
+            "token": "length",
+            "contribution": 0.10067
+          },
+          {
+            "token": "3",
+            "contribution": 0.09359
+          },
+          {
+            "token": "purpose",
+            "contribution": 0.09277
+          },
+          {
+            "token": "extended",
+            "contribution": -0.09238
+          }
+        ]
+      }
+    ]
+  },
+  "generated_at": "2026-10-21 17:57:08"
+}
