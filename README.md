@@ -5,7 +5,8 @@ An end-to-end AI-powered Indian tax advisor system. It features two primary comp
 2. **The NLP Pipeline (`nlp_pipeline`)**: A document processing pipeline that parses PDFs (like Form 16s), summarizes them, extracts entities, and generates actionable tax insights using the RAG Model.
 
 ---
-
+## Product Link:
+**Live demo:** [Fiduciary-lens-tax-advisor](https://fiduciary-lens-tax-advisor-system-f.vercel.app/) 
 ## Quick Start
 
 ### 1. Setup Environment
